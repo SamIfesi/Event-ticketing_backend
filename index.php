@@ -28,7 +28,7 @@ require_once __DIR__ . '/middleware/DevMiddleware.php';
 
 // Controllers — add each one here as you build them
 require_once __DIR__ . '/controllers/AuthController.php';
-// require_once __DIR__ . '/controllers/EventController.php';
+require_once __DIR__ . '/controllers/EventController.php';
 // require_once __DIR__ . '/controllers/BookingController.php';
 // require_once __DIR__ . '/controllers/TicketController.php';
 // require_once __DIR__ . '/controllers/CategoryController.php';
@@ -46,7 +46,7 @@ $router = new Router();
 
 //    Uncomment each file as you build the controllers
 require_once __DIR__ . '/routes/auth.php';
-// require_once __DIR__ . '/routes/events.php';
+require_once __DIR__ . '/routes/events.php';
 // require_once __DIR__ . '/routes/bookings.php';
 // require_once __DIR__ . '/routes/tickets.php';
 // require_once __DIR__ . '/routes/admin.php';
