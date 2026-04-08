@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
   exit;
 }
 
-// load all the classes
+// load all classes
 require_once __DIR__ . '/config/Environment.php';
 require_once __DIR__ . '/config/Database.php';
 require_once __DIR__ . '/config/Constants.php';
@@ -27,14 +27,13 @@ require_once __DIR__ . '/middleware/RoleMiddleware.php';
 require_once __DIR__ . '/middleware/DevMiddleware.php';
 
 // Controllers — add each one here as you build them
-// require_once __DIR__ . '/controllers/AuthController.php';
+require_once __DIR__ . '/controllers/AuthController.php';
 // require_once __DIR__ . '/controllers/EventController.php';
 // require_once __DIR__ . '/controllers/BookingController.php';
 // require_once __DIR__ . '/controllers/TicketController.php';
 // require_once __DIR__ . '/controllers/CategoryController.php';
 // require_once __DIR__ . '/controllers/AdminController.php';
 // require_once __DIR__ . '/controllers/DevController.php';
-
 
 // Load .env variables into $_ENV
 Environment::load(__DIR__ . '/.env');
@@ -45,20 +44,15 @@ $request = new Request();
 // Create the router
 $router = new Router();
 
-// ============================================================
-// 4. REGISTER ROUTES
 //    Uncomment each file as you build the controllers
-// ============================================================
-// require_once __DIR__ . '/routes/auth.php';
+require_once __DIR__ . '/routes/auth.php';
 // require_once __DIR__ . '/routes/events.php';
 // require_once __DIR__ . '/routes/bookings.php';
 // require_once __DIR__ . '/routes/tickets.php';
 // require_once __DIR__ . '/routes/admin.php';
 // require_once __DIR__ . '/routes/dev.php';
 
-// ============================================================
 // 5. HEALTH CHECK — test this first to confirm the API works
-// ============================================================
 $router->get('/api/health', [HealthController::class, 'check']);
 
 // Temporary inline health check (remove once controllers exist)
@@ -70,7 +64,5 @@ if ($request->uri === '/api/health' && $request->method === 'GET') {
   ], 'API is healthy');
 }
 
-// ============================================================
 // 6. DISPATCH — match the request to a route and run it
-// ============================================================
 $router->dispatch($request);
