@@ -1,0 +1,10 @@
+Options -Indexes
+
+RewriteEngine On
+
+# Allow actual files and folders to load directly (e.g. storage/tickets/ticket.pdf)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Everything else goes to index.php
+RewriteRule ^(.*)$ index.php [QSA,L]
