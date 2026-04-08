@@ -1,0 +1,13 @@
+.env
+
+storage/tickets/
+storage/qrcodes/
+storage/banners/
+
+# Composer dependencies (if you use composer for mPDF, PHPMailer etc.)
+vendor/
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
