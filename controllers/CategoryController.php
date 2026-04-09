@@ -1,0 +1,206 @@
+<?php
+
+class CategoryController
+{
+  private PDO $db;
+  private Request $request;
+
+  public function __construct(Request $request)
+  {
+    $this->request = $request;
+    $this->db      = Database::connect();
+  }
+
+  // ============================================================
+  // GET /api/categories
+  // Public — anyone can see categories
+  // Used by React to populate the filter dropdown on events page
+  // ============================================================
+  public function index(): void
+  {
+    $stmt = $this->db->prepare("
+            SELECT
+                c.id,
+                c.name,
+                c.slug,
+                c.icon,
+                COUNT(e.id) AS event_count
+            FROM categories c
+            LEFT JOIN events e
+                ON e.category_id = c.id
+                AND e.status = 'published'
+            GROUP BY c.id, c.name, c.slug, c.icon
+            ORDER BY c.name ASC
+        ");
+    $stmt->execute();
+    $categories = $stmt->fetchAll();
+
+    Response::success(['categories' => $categories]);
+  }
+
+  // ============================================================
+  // GET /api/categories/:id
+  // Public — get a single category + its published events
+  // ============================================================
+  public function show(array $params): void
+  {
+    $categoryId = (int) $params['id'];
+
+    // Fetch the category
+    $stmt = $this->db->prepare("
+            SELECT id, name, slug, icon FROM categories WHERE id = ?
+        ");
+    $stmt->execute([$categoryId]);
+    $category = $stmt->fetch();
+
+    if (!$category) {
+      Response::notFound('Category not found.');
+    }
+
+    // Fetch published events under this category
+    $stmt = $this->db->prepare("
+            SELECT
+                e.id,
+                e.title,
+                e.slug,
+                e.location,
+                e.banner_image,
+                e.start_date,
+                e.total_tickets,
+                e.tickets_sold,
+                u.name AS organizer_name
+            FROM events e
+            JOIN users u ON u.id = e.organizer_id
+            WHERE e.category_id = ? AND e.status = 'published'
+            ORDER BY e.start_date ASC
+        ");
+    $stmt->execute([$categoryId]);
+    $category['events'] = $stmt->fetchAll();
+
+    Response::success(['category' => $category]);
+  }
+
+  // ============================================================
+  // POST /api/categories
+  // Protected: admin or dev only
+  // ============================================================
+  public function store(): void
+  {
+    $name = trim($this->request->input('name', ''));
+    $icon = trim($this->request->input('icon', 'ticket'));
+
+    // Validate
+    $errors = [];
+
+    if (empty($name)) {
+      $errors['name'] = 'Category name is required.';
+    }
+
+    if (!empty($errors)) {
+      Response::validationError($errors);
+    }
+
+    // Generate slug from name
+    $slug = $this->generateSlug($name);
+
+    // Check slug is unique
+    $stmt = $this->db->prepare('SELECT id FROM categories WHERE slug = ?');
+    $stmt->execute([$slug]);
+    if ($stmt->fetch()) {
+      Response::error('A category with this name already exists.', 409);
+    }
+
+    $stmt = $this->db->prepare("
+            INSERT INTO categories (name, slug, icon) VALUES (?, ?, ?)
+        ");
+    $stmt->execute([$name, $slug, $icon]);
+
+    $categoryId = $this->db->lastInsertId();
+
+    $stmt = $this->db->prepare('SELECT * FROM categories WHERE id = ?');
+    $stmt->execute([$categoryId]);
+    $category = $stmt->fetch();
+
+    Response::success(['category' => $category], 'Category created successfully.', 201);
+  }
+
+  // ============================================================
+  // PUT /api/categories/:id
+  // Protected: admin or dev only
+  // ============================================================
+  public function update(array $params): void
+  {
+    $categoryId = (int) $params['id'];
+
+    $stmt = $this->db->prepare('SELECT * FROM categories WHERE id = ?');
+    $stmt->execute([$categoryId]);
+    $category = $stmt->fetch();
+
+    if (!$category) {
+      Response::notFound('Category not found.');
+    }
+
+    $name = trim($this->request->input('name', ''));
+    $icon = trim($this->request->input('icon', ''));
+
+    $stmt = $this->db->prepare("
+            UPDATE categories SET
+                name = COALESCE(NULLIF(?, ''), name),
+                icon = COALESCE(NULLIF(?, ''), icon)
+            WHERE id = ?
+        ");
+    $stmt->execute([$name, $icon, $categoryId]);
+
+    $stmt = $this->db->prepare('SELECT * FROM categories WHERE id = ?');
+    $stmt->execute([$categoryId]);
+    $updated = $stmt->fetch();
+
+    Response::success(['category' => $updated], 'Category updated successfully.');
+  }
+
+  // ============================================================
+  // DELETE /api/categories/:id
+  // Protected: admin or dev only
+  // Only deletes if no events are linked to this category
+  // ============================================================
+  public function destroy(array $params): void
+  {
+    $categoryId = (int) $params['id'];
+
+    $stmt = $this->db->prepare('SELECT id FROM categories WHERE id = ?');
+    $stmt->execute([$categoryId]);
+
+    if (!$stmt->fetch()) {
+      Response::notFound('Category not found.');
+    }
+
+    // Check if any events use this category
+    $stmt = $this->db->prepare("
+            SELECT COUNT(*) FROM events WHERE category_id = ?
+        ");
+    $stmt->execute([$categoryId]);
+    $eventCount = (int) $stmt->fetchColumn();
+
+    if ($eventCount > 0) {
+      Response::error(
+        "Cannot delete this category — {$eventCount} event(s) are using it. Reassign them first.",
+        409
+      );
+    }
+
+    $this->db->prepare('DELETE FROM categories WHERE id = ?')->execute([$categoryId]);
+
+    Response::success(null, 'Category deleted successfully.');
+  }
+
+  // ============================================================
+  // PRIVATE HELPERS
+  // ============================================================
+  private function generateSlug(string $name): string
+  {
+    $slug = strtolower(trim($name));
+    $slug = preg_replace('/[^a-z0-9\s-]/', '', $slug);
+    $slug = preg_replace('/[\s-]+/', '-', $slug);
+    return trim($slug, '-');
+  }
+}
