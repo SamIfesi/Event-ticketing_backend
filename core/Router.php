@@ -93,8 +93,15 @@ class Router
         $params     = array_combine($paramNames, $matches) ?: [];
 
         // Run middlewares first
-        foreach ($route['middlewares'] as $middleware) {
-          (new $middleware())->handle($request);
+        // Middlewares can be plain class names or [ClassName => $args] arrays
+        foreach ($route['middlewares'] as $key => $value) {
+          if (is_string($value)) {
+            // Plain middleware e.g. AuthMiddleware::class
+            (new $value())->handle($request);
+          } else {
+            // Middleware with arguments e.g. RoleMiddleware::class => ['organizer']
+            (new $key($value))->handle($request);
+          }
         }
 
         // Call the controller method
