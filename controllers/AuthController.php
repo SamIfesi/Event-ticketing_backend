@@ -13,75 +13,168 @@ class AuthController
 
   // ============================================================
   // POST /api/auth/register
+  // Creates account, sends OTP, logs user in immediately
   // ============================================================
   public function register(): void
   {
-    // 1. Get input from request body
     $name     = trim($this->request->input('name', ''));
     $email    = trim($this->request->input('email', ''));
     $password = $this->request->input('password', '');
 
-    // 2. Validate input
-    $errors = [];
-
-    if (empty($name)) {
-      $errors['name'] = 'Name is required.';
-    }
-
-    if (empty($email)) {
-      $errors['email'] = 'Email is required.';
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-      $errors['email'] = 'Please enter a valid email address.';
-    }
-
-    if (empty($password)) {
-      $errors['password'] = 'Password is required.';
-    } elseif (strlen($password) < 8) {
-      $errors['password'] = 'Password must be at least 8 characters.';
-    }
+    // Validate
+    $errors = ValidationHelper::check(
+      ['name' => $name, 'email' => $email, 'password' => $password],
+      [
+        'name'     => 'required|min:2|max:150',
+        'email'    => 'required|email',
+        'password' => 'required|min:8',
+      ]
+    );
 
     if (!empty($errors)) {
       Response::validationError($errors);
     }
 
-    // 3. Check if email is already taken
+    // Check email not already taken
     $stmt = $this->db->prepare('SELECT id FROM users WHERE email = ?');
     $stmt->execute([$email]);
-
     if ($stmt->fetch()) {
       Response::error('An account with this email already exists.', 409);
     }
 
-    // 4. Hash the password — NEVER store plain text passwords
+    // Hash password
     $passwordHash = password_hash($password, PASSWORD_BCRYPT);
 
-    // 5. Insert the new user
-    //    New users always start as 'attendee'
-    //    Role cannot be set from the request — prevents privilege escalation
+    // Insert user — email_verified defaults to 0 (unverified)
     $stmt = $this->db->prepare('
             INSERT INTO users (name, email, password_hash, role)
             VALUES (?, ?, ?, ?)
         ');
     $stmt->execute([$name, $email, $passwordHash, Constants::ROLE_ATTENDEE]);
-
     $userId = $this->db->lastInsertId();
 
-    // 6. Fetch the newly created user
+    // Fetch new user
     $stmt = $this->db->prepare('
-            SELECT id, name, email, role, created_at
-            FROM users
-            WHERE id = ?
+            SELECT id, name, email, role, email_verified, created_at FROM users WHERE id = ?
         ');
     $stmt->execute([$userId]);
     $user = $stmt->fetch();
 
-    // 7. Generate JWT token so they're logged in immediately after registering
+    // Generate OTP and store it
+    $otp       = $this->generateOTP();
+    $expiresAt = date('Y-m-d H:i:s', strtotime('+10 minutes'));
+
+    $this->db->prepare("
+            INSERT INTO email_verifications (user_id, email, otp, type, expires_at)
+            VALUES (?, ?, ?, 'register', ?)
+        ")->execute([$userId, $email, $otp, $expiresAt]);
+
+    // Send OTP email — failure doesn't block registration
+    $mailer = new MailService();
+    $mailer->sendOTP($email, $name, $otp, 'register');
+
+    // Log activity
+    $this->logActivity($userId, 'register', 'Account created');
+
+    // Issue JWT — logged in immediately even before verifying
     $token = JWTService::generate($user);
 
     Response::success([
-      'user'  => $user,
-      'token' => $token,
+      'user'         => $user,
+      'token'        => $token,
+      'message_hint' => 'A 6-digit OTP has been sent to your email. Please verify your account.',
     ], 'Account created successfully.', 201);
+  }
+
+  // ============================================================
+  // POST /api/auth/verify-email
+  // Protected: logged in
+  // User submits the OTP they received after registering
+  // ============================================================
+  public function verifyEmail(): void
+  {
+    $userId = $this->request->user['id'];
+    $otp    = trim($this->request->input('otp', ''));
+
+    if (empty($otp)) {
+      Response::validationError(['otp' => 'OTP is required.']);
+    }
+
+    // Find a valid unused OTP for this user
+    $stmt = $this->db->prepare("
+            SELECT id, expires_at FROM email_verifications
+            WHERE user_id = ?
+              AND otp      = ?
+              AND type     = 'register'
+              AND is_used  = 0
+            ORDER BY created_at DESC
+            LIMIT 1
+        ");
+    $stmt->execute([$userId, $otp]);
+    $record = $stmt->fetch();
+
+    if (!$record) {
+      Response::error('Invalid OTP. Please check the code and try again.', 400);
+    }
+
+    // Check it hasn't expired
+    if (strtotime($record['expires_at']) < time()) {
+      Response::error('This OTP has expired. Please request a new one.', 400);
+    }
+
+    // Mark OTP as used
+    $this->db->prepare("UPDATE email_verifications SET is_used = 1 WHERE id = ?")
+      ->execute([$record['id']]);
+
+    // Mark user as verified
+    $this->db->prepare("
+            UPDATE users SET email_verified = 1, email_verified_at = NOW() WHERE id = ?
+        ")->execute([$userId]);
+
+    // Log activity
+    $this->logActivity($userId, 'email_verified', 'Email address verified');
+
+    Response::success(null, 'Email verified successfully.');
+  }
+
+  // ============================================================
+  // POST /api/auth/resend-otp
+  // Protected: logged in
+  // Resends a fresh OTP if the previous one expired
+  // ============================================================
+  public function resendOTP(): void
+  {
+    $userId = $this->request->user['id'];
+
+    // Fetch user info
+    $stmt = $this->db->prepare('SELECT name, email, email_verified FROM users WHERE id = ?');
+    $stmt->execute([$userId]);
+    $user = $stmt->fetch();
+
+    if ($user['email_verified']) {
+      Response::error('Your email is already verified.', 400);
+    }
+
+    // Invalidate all previous unused OTPs for this user
+    $this->db->prepare("
+            UPDATE email_verifications SET is_used = 1
+            WHERE user_id = ? AND type = 'register' AND is_used = 0
+        ")->execute([$userId]);
+
+    // Generate and store new OTP
+    $otp       = $this->generateOTP();
+    $expiresAt = date('Y-m-d H:i:s', strtotime('+10 minutes'));
+
+    $this->db->prepare("
+            INSERT INTO email_verifications (user_id, email, otp, type, expires_at)
+            VALUES (?, ?, ?, 'register', ?)
+        ")->execute([$userId, $user['email'], $otp, $expiresAt]);
+
+    // Send fresh OTP
+    $mailer = new MailService();
+    $mailer->sendOTP($user['email'], $user['name'], $otp, 'register');
+
+    Response::success(null, 'A new OTP has been sent to your email.');
   }
 
   // ============================================================
@@ -89,90 +182,70 @@ class AuthController
   // ============================================================
   public function login(): void
   {
-    // 1. Get input
     $email    = trim($this->request->input('email', ''));
     $password = $this->request->input('password', '');
 
-    // 2. Validate
-    $errors = [];
-
-    if (empty($email)) {
-      $errors['email'] = 'Email is required.';
-    }
-
-    if (empty($password)) {
-      $errors['password'] = 'Password is required.';
-    }
+    $errors = ValidationHelper::check(
+      ['email' => $email, 'password' => $password],
+      ['email' => 'required|email', 'password' => 'required']
+    );
 
     if (!empty($errors)) {
       Response::validationError($errors);
     }
 
-    // 3. Find user by email
-    //    We fetch all roles including 'dev' here — login works for everyone
+    // Find user by email — all roles including dev can log in
     $stmt = $this->db->prepare('
-            SELECT id, name, email, password_hash, role, is_active
-            FROM users
-            WHERE email = ?
+            SELECT id, name, email, password_hash, role, is_active, email_verified
+            FROM users WHERE email = ?
         ');
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
-    // 4. Verify credentials
-    //    We use the same error message for both "user not found" and "wrong password"
-    //    This prevents attackers from knowing which emails are registered (enumeration attack)
+    // Same message for wrong email OR wrong password — prevents enumeration
     if (!$user || !password_verify($password, $user['password_hash'])) {
       Response::error('Invalid email or password.', 401);
     }
 
-    // 5. Check account is active
     if (!$user['is_active']) {
       Response::error('Your account has been deactivated. Please contact support.', 403);
     }
 
-    // 6. Remove password_hash before sending user data back
-    unset($user['password_hash']);
-    unset($user['is_active']);
+    unset($user['password_hash'], $user['is_active']);
 
-    // 7. Generate and return JWT token
+    // Log activity
+    $this->logActivity($user['id'], 'login', 'Logged in from ' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+
     $token = JWTService::generate($user);
 
     Response::success([
-      'user'  => $user,
-      'token' => $token,
+      'user'           => $user,
+      'token'          => $token,
+      'email_verified' => (bool) $user['email_verified'],
     ], 'Logged in successfully.');
   }
 
   // ============================================================
   // POST /api/auth/logout
-  // Protected: must be logged in
+  // Protected: logged in
   // ============================================================
   public function logout(): void
   {
-    // With JWT, logout is handled on the React side by deleting the token
-    // from localStorage. The server doesn't store tokens so there's nothing
-    // to invalidate here.
-    // This endpoint exists so React has a clean endpoint to call,
-    // and so you can add token blacklisting here later if needed.
-
+    $this->logActivity($this->request->user['id'], 'logout', 'Logged out');
     Response::success(null, 'Logged out successfully.');
   }
 
   // ============================================================
   // GET /api/auth/me
-  // Protected: must be logged in
-  // Returns the current authenticated user's data
+  // Protected: logged in
   // ============================================================
   public function me(): void
   {
-    // $request->user is set by AuthMiddleware from the JWT payload
     $userId = $this->request->user['id'];
 
-    // Fetch fresh data from DB in case anything changed since token was issued
     $stmt = $this->db->prepare('
-            SELECT id, name, email, role, avatar, created_at
-            FROM users
-            WHERE id = ?
+            SELECT id, name, email, role, avatar, email_verified, email_verified_at, created_at
+            FROM users WHERE id = ?
         ');
     $stmt->execute([$userId]);
     $user = $stmt->fetch();
@@ -182,5 +255,33 @@ class AuthController
     }
 
     Response::success(['user' => $user]);
+  }
+
+    // ============================================================
+    // PRIVATE HELPERS
+    // ============================================================
+
+  /**
+   * Generate a random 6-digit OTP
+   */
+  private function generateOTP(): string
+  {
+    return str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+  }
+
+  /**
+   * Write to activity_logs table
+   */
+  private function logActivity(int $userId, string $action, string $description = ''): void
+  {
+    try {
+      $this->db->prepare("
+                INSERT INTO activity_logs (user_id, action, description, ip_address)
+                VALUES (?, ?, ?, ?)
+            ")->execute([$userId, $action, $description, $_SERVER['REMOTE_ADDR'] ?? null]);
+    } catch (Exception $e) {
+      // Never let logging crash auth
+      error_log('Activity log error: ' . $e->getMessage());
+    }
   }
 }
