@@ -70,8 +70,8 @@ class AuthController
         ")->execute([$userId, $email, $otp, $expiresAt]);
 
     // Send OTP email — failure doesn't block registration
-    $mailer = new MailService();
-    $mailer->sendOTP($email, $name, $otp, 'register');
+    // $mailer = new MailService();
+    // $mailer->sendOTP($email, $name, $otp, 'register');
 
     // Log activity
     $this->logActivity($userId, 'register', 'Account created');
