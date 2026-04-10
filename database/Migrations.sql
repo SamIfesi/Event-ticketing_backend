@@ -10,8 +10,7 @@ USE event_ticketing;
 -- ============================================================
 ALTER TABLE users
     ADD COLUMN email_verified    TINYINT(1)   DEFAULT 0          AFTER role,
-    ADD COLUMN email_verified_at DATETIME     DEFAULT NULL        AFTER email_verified,
-    ADD COLUMN avatar            VARCHAR(255) DEFAULT NULL        AFTER email_verified_at;
+    ADD COLUMN email_verified_at DATETIME     DEFAULT NULL       AFTER email_verified;
 
 -- Mark your dev account as already verified
 UPDATE users SET email_verified = 1, email_verified_at = NOW() WHERE role = 'dev';
