@@ -17,7 +17,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // ============================================================
 // 2. AUTOLOAD
 // ============================================================
+
 require_once __DIR__ . '/config/Environment.php';
+Environment::load(__DIR__ . '/.env');
+
+require_once __DIR__ . '/vendor/autoload.php';
+
 require_once __DIR__ . '/config/Database.php';
 require_once __DIR__ . '/config/Constants.php';
 
@@ -47,19 +52,28 @@ require_once __DIR__ . '/controllers/CategoryController.php';
 require_once __DIR__ . '/controllers/AdminController.php';
 require_once __DIR__ . '/controllers/DevController.php';
 
-// Composer autoload for any additional packages
-require_once __DIR__ . '/vendor/autoload.php';
-
 // ============================================================
 // 3. BOOTSTRAP
 // ============================================================
-Environment::load(__DIR__ . '/.env');
-
 $request = new Request();
 $router  = new Router();
 
 // ============================================================
-// 4. REGISTER ROUTES
+// 4. HEALTH CHECK
+// Must be registered BEFORE routes so it matches first
+// Works regardless of subfolder — matches end of URI
+// ============================================================
+if (str_ends_with($request->uri, '/api/health') && $request->method === 'GET') {
+  Response::success([
+    'app'     => 'Event Ticketing API',
+    'status'  => 'running',
+    'env'     => Environment::get('APP_ENV', 'development'),
+    'php'     => PHP_VERSION,
+  ], 'API is healthy');
+}
+
+// ============================================================
+// 5. REGISTER ROUTES
 // ============================================================
 require_once __DIR__ . '/routes/auth.php';
 require_once __DIR__ . '/routes/profile.php';
@@ -69,17 +83,6 @@ require_once __DIR__ . '/routes/tickets.php';
 require_once __DIR__ . '/routes/categories.php';
 require_once __DIR__ . '/routes/admin.php';
 require_once __DIR__ . '/routes/dev.php';
-
-// ============================================================
-// 5. HEALTH CHECK
-// ============================================================
-if ($request->uri === '/api/health' && $request->method === 'GET') {
-  Response::success([
-    'app'    => 'Event Ticketing API',
-    'status' => 'running',
-    'env'    => Environment::get('APP_ENV', 'development'),
-  ], 'API is healthy');
-}
 
 // ============================================================
 // 6. DISPATCH
