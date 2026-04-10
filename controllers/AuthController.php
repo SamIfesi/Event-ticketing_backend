@@ -13,7 +13,6 @@ class AuthController
 
   // ============================================================
   // POST /api/auth/register
-  // Creates account, sends OTP, logs user in immediately
   // ============================================================
   public function register(): void
   {
@@ -21,7 +20,6 @@ class AuthController
     $email    = trim($this->request->input('email', ''));
     $password = $this->request->input('password', '');
 
-    // Validate
     $errors = ValidationHelper::check(
       ['name' => $name, 'email' => $email, 'password' => $password],
       [
@@ -35,22 +33,19 @@ class AuthController
       Response::validationError($errors);
     }
 
-    // Check email not already taken
+    // Check email not taken
     $stmt = $this->db->prepare('SELECT id FROM users WHERE email = ?');
     $stmt->execute([$email]);
     if ($stmt->fetch()) {
       Response::error('An account with this email already exists.', 409);
     }
 
-    // Hash password
-    $passwordHash = password_hash($password, PASSWORD_BCRYPT);
-
-    // Insert user — email_verified defaults to 0 (unverified)
-    $stmt = $this->db->prepare('
+    // Insert user
+    $this->db->prepare('
             INSERT INTO users (name, email, password_hash, role)
             VALUES (?, ?, ?, ?)
-        ');
-    $stmt->execute([$name, $email, $passwordHash, Constants::ROLE_ATTENDEE]);
+        ')->execute([$name, $email, password_hash($password, PASSWORD_BCRYPT), Constants::ROLE_ATTENDEE]);
+
     $userId = $this->db->lastInsertId();
 
     // Fetch new user
@@ -69,27 +64,25 @@ class AuthController
             VALUES (?, ?, ?, 'register', ?)
         ")->execute([$userId, $email, $otp, $expiresAt]);
 
-    // Send OTP email — failure doesn't block registration
-    // $mailer = new MailService();
-    // $mailer->sendOTP($email, $name, $otp, 'register');
+    // QUEUE the email instead of sending directly — returns instantly
+    QueueService::sendOTP($email, $name, $otp, 'register');
 
     // Log activity
     $this->logActivity($userId, 'register', 'Account created');
 
-    // Issue JWT — logged in immediately even before verifying
+    // Issue JWT
     $token = JWTService::generate($user);
 
     Response::success([
       'user'         => $user,
       'token'        => $token,
-      'message_hint' => 'A 6-digit OTP has been sent to your email. Please verify your account.',
+      'message_hint' => 'A 6-digit OTP has been sent to your email.',
     ], 'Account created successfully.', 201);
   }
 
   // ============================================================
   // POST /api/auth/verify-email
   // Protected: logged in
-  // User submits the OTP they received after registering
   // ============================================================
   public function verifyEmail(): void
   {
@@ -100,15 +93,10 @@ class AuthController
       Response::validationError(['otp' => 'OTP is required.']);
     }
 
-    // Find a valid unused OTP for this user
     $stmt = $this->db->prepare("
             SELECT id, expires_at FROM email_verifications
-            WHERE user_id = ?
-              AND otp      = ?
-              AND type     = 'register'
-              AND is_used  = 0
-            ORDER BY created_at DESC
-            LIMIT 1
+            WHERE user_id = ? AND otp = ? AND type = 'register' AND is_used = 0
+            ORDER BY created_at DESC LIMIT 1
         ");
     $stmt->execute([$userId, $otp]);
     $record = $stmt->fetch();
@@ -117,21 +105,17 @@ class AuthController
       Response::error('Invalid OTP. Please check the code and try again.', 400);
     }
 
-    // Check it hasn't expired
     if (strtotime($record['expires_at']) < time()) {
       Response::error('This OTP has expired. Please request a new one.', 400);
     }
 
-    // Mark OTP as used
     $this->db->prepare("UPDATE email_verifications SET is_used = 1 WHERE id = ?")
       ->execute([$record['id']]);
 
-    // Mark user as verified
     $this->db->prepare("
             UPDATE users SET email_verified = 1, email_verified_at = NOW() WHERE id = ?
         ")->execute([$userId]);
 
-    // Log activity
     $this->logActivity($userId, 'email_verified', 'Email address verified');
 
     Response::success(null, 'Email verified successfully.');
@@ -140,13 +124,11 @@ class AuthController
   // ============================================================
   // POST /api/auth/resend-otp
   // Protected: logged in
-  // Resends a fresh OTP if the previous one expired
   // ============================================================
   public function resendOTP(): void
   {
     $userId = $this->request->user['id'];
 
-    // Fetch user info
     $stmt = $this->db->prepare('SELECT name, email, email_verified FROM users WHERE id = ?');
     $stmt->execute([$userId]);
     $user = $stmt->fetch();
@@ -155,13 +137,13 @@ class AuthController
       Response::error('Your email is already verified.', 400);
     }
 
-    // Invalidate all previous unused OTPs for this user
+    // Invalidate old OTPs
     $this->db->prepare("
             UPDATE email_verifications SET is_used = 1
             WHERE user_id = ? AND type = 'register' AND is_used = 0
         ")->execute([$userId]);
 
-    // Generate and store new OTP
+    // Generate new OTP
     $otp       = $this->generateOTP();
     $expiresAt = date('Y-m-d H:i:s', strtotime('+10 minutes'));
 
@@ -170,9 +152,8 @@ class AuthController
             VALUES (?, ?, ?, 'register', ?)
         ")->execute([$userId, $user['email'], $otp, $expiresAt]);
 
-    // Send fresh OTP
-    $mailer = new MailService();
-    $mailer->sendOTP($user['email'], $user['name'], $otp, 'register');
+    // Queue the email
+    QueueService::sendOTP($user['email'], $user['name'], $otp, 'register');
 
     Response::success(null, 'A new OTP has been sent to your email.');
   }
@@ -194,7 +175,6 @@ class AuthController
       Response::validationError($errors);
     }
 
-    // Find user by email — all roles including dev can log in
     $stmt = $this->db->prepare('
             SELECT id, name, email, password_hash, role, is_active, email_verified
             FROM users WHERE email = ?
@@ -202,7 +182,6 @@ class AuthController
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
-    // Same message for wrong email OR wrong password — prevents enumeration
     if (!$user || !password_verify($password, $user['password_hash'])) {
       Response::error('Invalid email or password.', 401);
     }
@@ -213,8 +192,7 @@ class AuthController
 
     unset($user['password_hash'], $user['is_active']);
 
-    // Log activity
-    $this->logActivity($user['id'], 'login', 'Logged in from ' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+    $this->logActivity($user['id'], 'login', 'Logged in');
 
     $token = JWTService::generate($user);
 
@@ -257,21 +235,15 @@ class AuthController
     Response::success(['user' => $user]);
   }
 
-    // ============================================================
-    // PRIVATE HELPERS
-    // ============================================================
+  // ============================================================
+  // PRIVATE HELPERS
+  // ============================================================
 
-  /**
-   * Generate a random 6-digit OTP
-   */
   private function generateOTP(): string
   {
     return str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
   }
 
-  /**
-   * Write to activity_logs table
-   */
   private function logActivity(int $userId, string $action, string $description = ''): void
   {
     try {
@@ -280,7 +252,6 @@ class AuthController
                 VALUES (?, ?, ?, ?)
             ")->execute([$userId, $action, $description, $_SERVER['REMOTE_ADDR'] ?? null]);
     } catch (Exception $e) {
-      // Never let logging crash auth
       error_log('Activity log error: ' . $e->getMessage());
     }
   }
