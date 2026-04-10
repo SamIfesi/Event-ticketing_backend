@@ -185,9 +185,8 @@ class ProfileController
     $newHash = password_hash($newPassword, PASSWORD_BCRYPT);
     $this->db->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([$newHash, $userId]);
 
-    // Send security notification email
-    $mailer = new MailService();
-    $mailer->sendPasswordChanged($user['email'], $user['name']);
+    // Queue the notification email instead of sending directly
+    QueueService::sendPasswordChanged($user['email'], $user['name']);
 
     $this->logActivity($userId, 'password_change', 'Password changed successfully');
 
@@ -240,9 +239,8 @@ class ProfileController
             VALUES (?, ?, ?, 'email_change', ?)
         ")->execute([$userId, $newEmail, $otp, $expiresAt]);
 
-    // Send OTP to the NEW email address to confirm they own it
-    $mailer = new MailService();
-    $mailer->sendOTP($newEmail, $user['name'], $otp, 'email_change');
+    // Queue OTP email to the NEW email address
+    QueueService::sendOTP($newEmail, $user['name'], $otp, 'email_change');
 
     Response::success(null, "A verification code has been sent to {$newEmail}. Enter it to confirm the change.");
   }
