@@ -29,7 +29,7 @@ class Database
       } catch (PDOException $e) {
         // In production you would log this, not expose the message
         http_response_code(500);
-        echo json_encode(['error' => 'Database connection failed']);
+        echo json_encode(['error' => $e->getMessage()]);
         exit;
       }
     }
