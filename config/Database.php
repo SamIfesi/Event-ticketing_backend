@@ -10,10 +10,10 @@ class Database
   public static function connect(): PDO
   {
     if (self::$instance === null) {
-      $host   = Environment::get('DB_HOST', '127.0.0.1');
-      $name   = Environment::get('DB_NAME');
-      $user   = Environment::get('DB_USER');
-      $pass   = Environment::get('DB_PASS');
+      $host   = Environment::get('DATABASE_HOST', 'localhost');
+      $name   = Environment::get('DATABASE_NAME');
+      $user   = Environment::get('DATABASE_USER');
+      $pass   = Environment::get('DATABASE_PASS', '');
 
       $dsn = "mysql:host={$host};dbname={$name};charset=utf8mb4";
 
