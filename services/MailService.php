@@ -1,36 +1,22 @@
 <?php
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
 
 class MailService
 {
-  private PHPMailer $mailer;
+  private string $apiToken;
+  private string $inboxId;
+  private string $fromEmail;
+  private string $fromName;
 
   public function __construct()
   {
-    $this->mailer = new PHPMailer(true);
-
-    // SMTP configuration — uses your .env values
-    $this->mailer->isSMTP();
-    $this->mailer->Host       = Environment::get('MAIL_HOST', 'smtp.gmail.com');
-    $this->mailer->SMTPAuth   = true;
-    $this->mailer->Username   = Environment::get('MAIL_USERNAME');
-    $this->mailer->Password   = Environment::get('MAIL_PASSWORD');
-    $this->mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $this->mailer->Port       = (int) Environment::get('MAIL_PORT', '587');
-
-    // Sender details
-    $this->mailer->setFrom(
-      Environment::get('MAIL_FROM_ADDRESS'),
-      Environment::get('MAIL_FROM_NAME', 'Event Ticketing')
-    );
-
-    $this->mailer->isHTML(true);
+    $this->apiToken  = Environment::get('MAILTRAP_API_TOKEN');
+    $this->inboxId   = Environment::get('MAILTRAP_INBOX_ID');
+    $this->fromEmail = Environment::get('MAIL_FROM_ADDRESS');
+    $this->fromName  = Environment::get('MAIL_FROM_NAME');
   }
 
   // ============================================================
   // Send OTP verification email
-  // Called after register and after email change request
   // ============================================================
   public function sendOTP(string $toEmail, string $toName, string $otp, string $type = 'register'): bool
   {
@@ -151,23 +137,45 @@ class MailService
   }
 
   // ============================================================
-  // PRIVATE HELPERS
+  // PRIVATE HELPERS (API Implementation)
   // ============================================================
 
   private function send(string $toEmail, string $toName, string $subject, string $body): bool
   {
-    try {
-      $this->mailer->clearAddresses();
-      $this->mailer->addAddress($toEmail, $toName);
-      $this->mailer->Subject = $subject;
-      $this->mailer->Body    = $body;
-      $this->mailer->send();
+    $url = "https://sandbox.api.mailtrap.io/api/send/{$this->inboxId}";
+
+    $data = [
+      "to" => [
+        ["email" => $toEmail, "name" => $toName]
+      ],
+      "from" => [
+        "email" => $this->fromEmail,
+        "name" => $this->fromName
+      ],
+      "subject" => $subject,
+      "html" => $body,
+      "category" => "Transactional"
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+      "Authorization: Bearer {$this->apiToken}",
+      "Content-Type: application/json"
+    ]);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode >= 200 && $httpCode < 300) {
       return true;
-    } catch (Exception $e) {
-      // Log the error but don't crash the app
-      error_log('MailService error: ' . $e->getMessage());
-      return false;
     }
+
+    error_log('MailService API error: HTTP ' . $httpCode . ' Response: ' . $response);
+    return false;
   }
 
   /**
@@ -191,13 +199,9 @@ class MailService
             color:#e2e8f0;
         '>
             <div style='max-width:560px; margin:2rem auto; padding:0 1rem;'>
-
-                <!-- Header -->
                 <div style='text-align:center; padding:2rem 0 1rem;'>
                     <span style='color:#f97316; font-size:1.5rem; font-weight:800;'>{$appName}</span>
                 </div>
-
-                <!-- Card -->
                 <div style='
                     background:#151a23;
                     border-radius:1rem;
@@ -207,12 +211,9 @@ class MailService
                     <h2 style='color:#f1f5f9; margin:0 0 1.25rem; font-size:1.3rem;'>{$heading}</h2>
                     {$content}
                 </div>
-
-                <!-- Footer -->
                 <p style='text-align:center; color:#475569; font-size:0.8rem; margin-top:1.5rem;'>
                     &copy; " . date('Y') . " {$appName}. All rights reserved.
                 </p>
-
             </div>
         </body>
         </html>
