@@ -42,7 +42,7 @@ class MailService
                     display: inline-block;
                 '>{$otp}</span>
             </div>
-            <p>It expires in <strong>10 minutes</strong>.</p>
+            <p>It expires in <strong>30 minutes</strong>.</p>
             <p style='color:#888; font-size:0.9rem;'>If you did not request this, please ignore this email.</p>
         ");
 

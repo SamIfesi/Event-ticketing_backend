@@ -232,7 +232,7 @@ class ProfileController
 
     // Generate OTP and store against NEW email
     $otp       = $this->generateOTP();
-    $expiresAt = date('Y-m-d H:i:s', strtotime('+10 minutes'));
+    $expiresAt = date('Y-m-d H:i:s', strtotime('+30 minutes'));
 
     $this->db->prepare("
             INSERT INTO email_verifications (user_id, email, otp, type, expires_at)
