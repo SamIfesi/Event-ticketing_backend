@@ -1,23 +1,16 @@
 <?php
 
-// UNCOMMENT THIS WHEN READY FOR PRODUCTION:
-// use Google\Client;
-// use Google\Service\Gmail;
-// use Google\Service\Gmail\Message;
-
 class MailService
 {
-  private string $apiToken;
-  private string $inboxId;
   private string $fromEmail;
   private string $fromName;
+  private string $appEnv;
 
   public function __construct()
   {
-    $this->apiToken  = Environment::get('MAIL_TOKEN');
-    $this->inboxId   = Environment::get('MAIL_INBOX_ID');
     $this->fromEmail = Environment::get('MAIL_FROM_ADDRESS');
-    $this->fromName  = Environment::get('MAIL_FROM_NAME');
+    $this->fromName  = Environment::get('MAIL_FROM_NAME', 'Event Ticketing');
+    $this->appEnv    = Environment::get('APP_ENV', 'development');
   }
 
   // ============================================================
@@ -35,8 +28,8 @@ class MailService
 
     $body = $this->template($heading, "
             <p><strong>Hello {$toName}</strong>,</p>
-            <p>Thanks for signing up with Event Ticketing!. Before you get started, we need to confirm your email address.</p>
-            <p>Please use the OTP below to confirm your email address.</p> 
+            <p>Thanks for signing up with Event Ticketing! Before you get started, we need to confirm your email address.</p>
+            <p>Please use the OTP below to confirm your email address.</p>
             <div style='text-align:center; margin: 2rem 0;'>
                 <span style='
                     font-size: 1.5rem;
@@ -49,7 +42,7 @@ class MailService
                     display: inline-block;
                 '>{$otp}</span>
             </div>
-            <p>It expires in <strong>30 minutes</strong>.</p>
+            <p>It expires in <strong>10 minutes</strong>.</p>
             <p style='color:#888; font-size:0.9rem;'>If you did not request this, please ignore this email.</p>
         ");
 
@@ -121,7 +114,7 @@ class MailService
             </div>
 
             <p style='color:#888; font-size:0.85rem;'>
-                Your QR code tickets are available in your dashboard. 
+                Your QR code tickets are available in your dashboard.
                 Show your QR code at the gate for check-in.
             </p>
         ");
@@ -144,22 +137,34 @@ class MailService
   }
 
   // ============================================================
-  // PRIVATE HELPERS
+  // Routes to the correct mail driver based on APP_ENV
+  // development → Mailtrap API
+  // production  → Gmail API
   // ============================================================
-
   private function send(string $toEmail, string $toName, string $subject, string $body): bool
   {
-    // ============================================================
-    // DEVELOPMENT MODE: MAILTRAP API (CURRENTLY ACTIVE)
-    // ============================================================
-    $url = "https://sandbox.api.mailtrap.io/api/send/{$this->inboxId}";
+    if ($this->appEnv === 'production') {
+      return $this->sendViaGmail($toEmail, $toName, $subject, $body);
+    }
 
+    return $this->sendViaMailtrap($toEmail, $toName, $subject, $body);
+  }
+
+  // ============================================================
+  // DEVELOPMENT: Mailtrap API -- APP_ENV=development
+  // ============================================================
+  private function sendViaMailtrap(string $toEmail, string $toName, string $subject, string $body): bool
+  {
+    $apiToken = Environment::get('MAIL_TOKEN');
+    $inboxId  = Environment::get('MAIL_INBOX_ID');
+
+    $url  = "https://sandbox.api.mailtrap.io/api/send/{$inboxId}";
     $data = [
-      "to"       => [["email" => $toEmail, "name" => $toName]],
-      "from"     => ["email" => $this->fromEmail, "name" => $this->fromName],
-      "subject"  => $subject,
-      "html"     => $body,
-      "category" => "Transactional"
+      'to'       => [['email' => $toEmail, 'name' => $toName]],
+      'from'     => ['email' => $this->fromEmail, 'name' => $this->fromName],
+      'subject'  => $subject,
+      'html'     => $body,
+      'category' => 'Transactional',
     ];
 
     $ch = curl_init($url);
@@ -167,9 +172,10 @@ class MailService
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
-      "Authorization: Bearer {$this->apiToken}",
-      "Content-Type: application/json"
+      "Authorization: Bearer {$apiToken}",
+      'Content-Type: application/json',
     ]);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
 
     $response = curl_exec($ch);
 
@@ -186,61 +192,70 @@ class MailService
       return true;
     }
 
-
-
-
-    // ============================================================
-    // PRODUCTION MODE: GOOGLE GMAIL API (COMMENTED OUT)
-    // ============================================================
-    /*
-    try {
-        $client = new Client();
-        $client->setClientId(Environment::get('CLIENT_ID'));
-        $client->setClientSecret(Environment::get('CLIENT_SECRET'));
-        $client->refreshToken(Environment::get('REFRESH_TOKEN'));
-
-        $service = new Gmail($client);
-
-        $boundary = uniqid(rand(), true);
-        $rawMessage = "From: {$this->fromName} <{$this->fromEmail}>\r\n";
-        $rawMessage .= "To: {$toName} <{$toEmail}>\r\n";
-        $rawMessage .= "Subject: =?utf-8?B?" . base64_encode($subject) . "?=\r\n";
-        $rawMessage .= "MIME-Version: 1.0\r\n";
-        $rawMessage .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n\r\n";
-        
-        $rawMessage .= "--{$boundary}\r\n";
-        $rawMessage .= "Content-Type: text/plain; charset=utf-8\r\n\r\n";
-        $rawMessage .= strip_tags($body) . "\r\n\r\n";
-        
-        $rawMessage .= "--{$boundary}\r\n";
-        $rawMessage .= "Content-Type: text/html; charset=utf-8\r\n\r\n";
-        $rawMessage .= $body . "\r\n\r\n";
-        $rawMessage .= "--{$boundary}--";
-
-        $encodedMessage = rtrim(strtr(base64_encode($rawMessage), '+/', '-_'), '=');
-
-        $message = new Message();
-        $message->setRaw($encodedMessage);
-
-        $service->users_messages->send('me', $message);
-        
-        return true;
-
-    } catch (Exception $e) {
-        error_log("Gmail API Error: " . $e->getMessage());
-        return false;
-    }
-    */
-    error_log('MailService API error: HTTP ' . $httpCode . ' | Response: ' . $response);
+    error_log('Mailtrap API error: HTTP ' . $httpCode . ' | ' . $response);
     return false;
   }
 
-  /**
-   * Wraps content in a consistent HTML email template
-   */
+  // ============================================================
+  // PRODUCTION: Gmail API
+  // .env variables needed:
+  //   GMAIL_CLIENT_ID=your_client_id
+  //   GMAIL_CLIENT_SECRET=your_client_secret
+  //   GMAIL_REFRESH_TOKEN=your_refresh_token
+  //   APP_ENV=production
+  //
+  // Setup steps (do this when ready to deploy to Railway):
+  // 1. Go to console.cloud.google.com
+  // 2. Create a project → Enable Gmail API
+  // 3. Create OAuth2 credentials → Desktop app type
+  // 4. Get refresh token via OAuth Playground:
+  //    https://developers.google.com/oauthplayground
+  // 5. Run: composer require google/apiclient
+  // 6. Set APP_ENV=production in Railway environment variables
+  // ============================================================
+  private function sendViaGmail(string $toEmail, string $toName, string $subject, string $body): bool
+  {
+    try {
+      $client = new Google\Client();
+      $client->setClientId(Environment::get('GMAIL_CLIENT_ID'));
+      $client->setClientSecret(Environment::get('GMAIL_CLIENT_SECRET'));
+      $client->refreshToken(Environment::get('GMAIL_REFRESH_TOKEN'));
+
+      $service = new Google\Service\Gmail($client);
+
+      $boundary    = uniqid(rand(), true);
+      $rawMessage  = "From: {$this->fromName} <{$this->fromEmail}>\r\n";
+      $rawMessage .= "To: {$toName} <{$toEmail}>\r\n";
+      $rawMessage .= "Subject: =?utf-8?B?" . base64_encode($subject) . "?=\r\n";
+      $rawMessage .= "MIME-Version: 1.0\r\n";
+      $rawMessage .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n\r\n";
+      $rawMessage .= "--{$boundary}\r\n";
+      $rawMessage .= "Content-Type: text/plain; charset=utf-8\r\n\r\n";
+      $rawMessage .= strip_tags($body) . "\r\n\r\n";
+      $rawMessage .= "--{$boundary}\r\n";
+      $rawMessage .= "Content-Type: text/html; charset=utf-8\r\n\r\n";
+      $rawMessage .= $body . "\r\n\r\n";
+      $rawMessage .= "--{$boundary}--";
+
+      $encodedMessage = rtrim(strtr(base64_encode($rawMessage), '+/', '-_'), '=');
+
+      $message = new Google\Service\Gmail\Message();
+      $message->setRaw($encodedMessage);
+      $service->users_messages->send('me', $message);
+
+      return true;
+    } catch (Exception $e) {
+      error_log('Gmail API error: ' . $e->getMessage());
+      return false;
+    }
+  }
+
+  // ============================================================
+  // Consistent HTML email template
+  // ============================================================
   private function template(string $heading, string $content): string
   {
-    $appName = Environment::get('MAIL_FROM_NAME', 'Event Ticketing');
+    $appName = $this->fromName;
 
     return "
         <!DOCTYPE html>
@@ -256,9 +271,11 @@ class MailService
             color:#e2e8f0;
         '>
             <div style='max-width:560px; margin:2rem auto; padding:0 1rem;'>
+
                 <div style='text-align:center; padding:2rem 0 1rem;'>
                     <span style='color:#f97316; font-size:1.5rem; font-weight:800;'>{$appName}</span>
                 </div>
+
                 <div style='
                     background:#151a23;
                     border-radius:1rem;
@@ -268,6 +285,7 @@ class MailService
                     <h2 style='color:#f1f5f9; margin:0 0 1.25rem; font-size:1.3rem;'>{$heading}</h2>
                     {$content}
                 </div>
+
                 <p style='text-align:center; color:#475569; font-size:0.8rem; margin-top:1.5rem;'>
                     &copy; " . date('Y') . " {$appName}. All rights reserved.
                 </p>
