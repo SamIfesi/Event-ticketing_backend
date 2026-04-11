@@ -1,6 +1,12 @@
 {
-    "require": {
-        "phpmailer/phpmailer": "^7.0",
-        "bacon/bacon-qr-code": "^3.1"
-    }
+  "require": {
+    "phpmailer/phpmailer": "^7.0",
+    "bacon/bacon-qr-code": "^3.1",
+    "google/apiclient": "^2.19"
+  },
+  "extra": {
+    "google/apiclient-services": [
+      "Gmail"
+    ]
+  }
 }
