@@ -9,8 +9,8 @@ class MailService
 
   public function __construct()
   {
-    $this->apiToken  = Environment::get('MAILTRAP_API_TOKEN');
-    $this->inboxId   = Environment::get('MAILTRAP_INBOX_ID');
+    $this->apiToken  = Environment::get('MAIL_TOKEN');
+    $this->inboxId   = Environment::get('MAIL_INBOX_ID');
     $this->fromEmail = Environment::get('MAIL_FROM_ADDRESS');
     $this->fromName  = Environment::get('MAIL_FROM_NAME');
   }
@@ -63,7 +63,7 @@ class MailService
     float  $totalAmount,
     string $dashboardUrl
   ): bool {
-    $subject  = "Your tickets for {$eventTitle} are confirmed!";
+    $subject         = "Your tickets for {$eventTitle} are confirmed!";
     $formattedAmount = '₦' . number_format($totalAmount, 2);
     $formattedDate   = date('D, d M Y \a\t g:ia', strtotime($eventDate));
 
@@ -137,7 +137,7 @@ class MailService
   }
 
   // ============================================================
-  // PRIVATE HELPERS (API Implementation)
+  // PRIVATE HELPERS
   // ============================================================
 
   private function send(string $toEmail, string $toName, string $subject, string $body): bool
@@ -145,15 +145,10 @@ class MailService
     $url = "https://sandbox.api.mailtrap.io/api/send/{$this->inboxId}";
 
     $data = [
-      "to" => [
-        ["email" => $toEmail, "name" => $toName]
-      ],
-      "from" => [
-        "email" => $this->fromEmail,
-        "name" => $this->fromName
-      ],
-      "subject" => $subject,
-      "html" => $body,
+      "to"       => [["email" => $toEmail, "name" => $toName]],
+      "from"     => ["email" => $this->fromEmail, "name" => $this->fromName],
+      "subject"  => $subject,
+      "html"     => $body,
       "category" => "Transactional"
     ];
 
@@ -167,6 +162,14 @@ class MailService
     ]);
 
     $response = curl_exec($ch);
+
+    // Catch connection-level errors (no internet, DNS failure, etc.)
+    if (curl_errno($ch)) {
+      error_log('MailService cURL error: ' . curl_error($ch));
+      curl_close($ch);
+      return false;
+    }
+
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
@@ -174,7 +177,7 @@ class MailService
       return true;
     }
 
-    error_log('MailService API error: HTTP ' . $httpCode . ' Response: ' . $response);
+    error_log('MailService API error: HTTP ' . $httpCode . ' | Response: ' . $response);
     return false;
   }
 
