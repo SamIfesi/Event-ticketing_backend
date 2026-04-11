@@ -130,6 +130,12 @@ foreach ($jobs as $job) {
             WHERE id = ?
         ")->execute([$newStatus, $error, $newStatus, $retryAt, $jobId]);
   }
+
+  sleep(3);
 }
 
 echo "[" . date('Y-m-d H:i:s') . "] Worker finished.\n";
+sleep(60); // Sleep before next run (if running in a loop)
+
+// Restart the worker by running this script again (e.g., via cron or a loop)
+passthru("php " . __FILE__);
