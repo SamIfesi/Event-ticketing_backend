@@ -38,6 +38,7 @@ require_once __DIR__ . '/services/PaystackService.php';
 require_once __DIR__ . '/services/QRCodeService.php';
 require_once __DIR__ . '/services/MailService.php';
 require_once __DIR__ . '/services/LogService.php';
+require_once __DIR__ . '/services/QueueService.php';
 
 require_once __DIR__ . '/middleware/AuthMiddleware.php';
 require_once __DIR__ . '/middleware/RoleMiddleware.php';
