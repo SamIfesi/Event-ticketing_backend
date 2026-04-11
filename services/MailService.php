@@ -1,5 +1,10 @@
 <?php
 
+// UNCOMMENT THIS WHEN READY FOR PRODUCTION:
+// use Google\Client;
+// use Google\Service\Gmail;
+// use Google\Service\Gmail\Message;
+
 class MailService
 {
   private string $apiToken;
@@ -144,6 +149,9 @@ class MailService
 
   private function send(string $toEmail, string $toName, string $subject, string $body): bool
   {
+    // ============================================================
+    // DEVELOPMENT MODE: MAILTRAP API (CURRENTLY ACTIVE)
+    // ============================================================
     $url = "https://sandbox.api.mailtrap.io/api/send/{$this->inboxId}";
 
     $data = [
@@ -165,7 +173,6 @@ class MailService
 
     $response = curl_exec($ch);
 
-    // Catch connection-level errors (no internet, DNS failure, etc.)
     if (curl_errno($ch)) {
       error_log('MailService cURL error: ' . curl_error($ch));
       curl_close($ch);
@@ -179,6 +186,51 @@ class MailService
       return true;
     }
 
+
+
+
+    // ============================================================
+    // PRODUCTION MODE: GOOGLE GMAIL API (COMMENTED OUT)
+    // ============================================================
+    /*
+    try {
+        $client = new Client();
+        $client->setClientId(Environment::get('CLIENT_ID'));
+        $client->setClientSecret(Environment::get('CLIENT_SECRET'));
+        $client->refreshToken(Environment::get('REFRESH_TOKEN'));
+
+        $service = new Gmail($client);
+
+        $boundary = uniqid(rand(), true);
+        $rawMessage = "From: {$this->fromName} <{$this->fromEmail}>\r\n";
+        $rawMessage .= "To: {$toName} <{$toEmail}>\r\n";
+        $rawMessage .= "Subject: =?utf-8?B?" . base64_encode($subject) . "?=\r\n";
+        $rawMessage .= "MIME-Version: 1.0\r\n";
+        $rawMessage .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n\r\n";
+        
+        $rawMessage .= "--{$boundary}\r\n";
+        $rawMessage .= "Content-Type: text/plain; charset=utf-8\r\n\r\n";
+        $rawMessage .= strip_tags($body) . "\r\n\r\n";
+        
+        $rawMessage .= "--{$boundary}\r\n";
+        $rawMessage .= "Content-Type: text/html; charset=utf-8\r\n\r\n";
+        $rawMessage .= $body . "\r\n\r\n";
+        $rawMessage .= "--{$boundary}--";
+
+        $encodedMessage = rtrim(strtr(base64_encode($rawMessage), '+/', '-_'), '=');
+
+        $message = new Message();
+        $message->setRaw($encodedMessage);
+
+        $service->users_messages->send('me', $message);
+        
+        return true;
+
+    } catch (Exception $e) {
+        error_log("Gmail API Error: " . $e->getMessage());
+        return false;
+    }
+    */
     error_log('MailService API error: HTTP ' . $httpCode . ' | Response: ' . $response);
     return false;
   }
