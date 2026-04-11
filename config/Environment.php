@@ -42,6 +42,6 @@ class Environment
   //  Returns $default if the key doesn't exist
   public static function get(string $key, string $default = ''): string
   {
-    return $_ENV[$key] ?? $default;
+    return $_ENV[$key] ?? getenv($key) ?: $default;
   }
 }
