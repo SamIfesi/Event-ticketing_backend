@@ -29,11 +29,12 @@ class MailService
       : 'Confirm your email change';
 
     $body = $this->template($heading, "
-            <p>Hi <strong>{$toName}</strong>,</p>
-            <p>Use the OTP below to verify your email address. It expires in <strong>10 minutes</strong>.</p>
+            <p><strong>Hello {$toName}</strong>,</p>
+            <p>Thanks for signing up with Event Ticketing!. Before you get started, we need to confirm your email address.</p>
+            <p>Please use the OTP below to confirm your email address.</p> 
             <div style='text-align:center; margin: 2rem 0;'>
                 <span style='
-                    font-size: 2.5rem;
+                    font-size: 1.5rem;
                     font-weight: 800;
                     letter-spacing: 0.5rem;
                     color: #f97316;
@@ -43,6 +44,7 @@ class MailService
                     display: inline-block;
                 '>{$otp}</span>
             </div>
+            <p>It expires in <strong>30 minutes</strong>.</p>
             <p style='color:#888; font-size:0.9rem;'>If you did not request this, please ignore this email.</p>
         ");
 
