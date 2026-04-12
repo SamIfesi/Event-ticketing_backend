@@ -27,15 +27,13 @@ class QueueService
   public static function push(string $type, array $payload, int $delaySeconds = 0): bool
   {
     try {
-      $availableAt = date('Y-m-d H:i:s', time() + $delaySeconds);
-
       self::db()->prepare("
-                INSERT INTO jobs (type, payload, status, available_at)
-                VALUES (?, ?, 'pending', ?)
-            ")->execute([
+        INSERT INTO jobs (type, payload, status, available_at)
+        VALUES (?, ?, 'pending', DATE_ADD(NOW(), INTERVAL ? SECOND))
+      ")->execute([
         $type,
         json_encode($payload),
-        $availableAt,
+        $delaySeconds,
       ]);
 
       return true;
