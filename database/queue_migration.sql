@@ -17,3 +17,4 @@ CREATE TABLE jobs (
 
 -- Index for the worker to quickly find pending jobs
 CREATE INDEX idx_jobs_status_available ON jobs (status, available_at);
+UPDATE jobs SET available_at = NOW() WHERE status = 'pending';
