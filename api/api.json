@@ -1,0 +1,68 @@
+{
+  "health": [{ "method": "GET", "endpoint": "/api/health" }],
+  "auth": [
+    { "method": "POST", "endpoint": "/api/auth/register" },
+    { "method": "POST", "endpoint": "/api/auth/login" },
+    { "method": "POST", "endpoint": "/api/auth/logout" },
+    { "method": "GET", "endpoint": "/api/auth/me" },
+    { "method": "POST", "endpoint": "/api/auth/verify-email" },
+    { "method": "POST", "endpoint": "/api/auth/resend-otp" }
+  ],
+  "profile": [
+    { "method": "GET", "endpoint": "/api/profile" },
+    { "method": "PUT", "endpoint": "/api/profile" },
+    { "method": "POST", "endpoint": "/api/profile/change-password" },
+    { "method": "POST", "endpoint": "/api/profile/change-email" },
+    { "method": "POST", "endpoint": "/api/profile/confirm-email-change" },
+    { "method": "GET", "endpoint": "/api/profile/bookings" },
+    { "method": "GET", "endpoint": "/api/profile/tickets" },
+    { "method": "GET", "endpoint": "/api/profile/activity" }
+  ],
+  "events": [
+    { "method": "GET", "endpoint": "/api/events" },
+    { "method": "GET", "endpoint": "/api/events/:id" },
+    { "method": "POST", "endpoint": "/api/events" },
+    { "method": "PUT", "endpoint": "/api/events/:id" },
+    { "method": "DELETE", "endpoint": "/api/events/:id" },
+    { "method": "GET", "endpoint": "/api/organizer/events" }
+  ],
+  "bookings": [
+    { "method": "POST", "endpoint": "/api/bookings" },
+    { "method": "POST", "endpoint": "/api/bookings/verify" },
+    { "method": "GET", "endpoint": "/api/bookings/mine" },
+    { "method": "GET", "endpoint": "/api/bookings/:id" },
+    { "method": "GET", "endpoint": "/api/organizer/events/:id/bookings" }
+  ],
+  "tickets": [
+    { "method": "GET", "endpoint": "/api/tickets/:id" },
+    { "method": "GET", "endpoint": "/api/tickets/booking/:bookingId" },
+    { "method": "POST", "endpoint": "/api/tickets/checkin" },
+    { "method": "GET", "endpoint": "/api/organizer/events/:id/checkins" }
+  ],
+  "categories": [
+    { "method": "GET", "endpoint": "/api/categories" },
+    { "method": "GET", "endpoint": "/api/categories/:id" },
+    { "method": "POST", "endpoint": "/api/categories" },
+    { "method": "PUT", "endpoint": "/api/categories/:id" },
+    { "method": "DELETE", "endpoint": "/api/categories/:id" }
+  ],
+  "admin": [
+    { "method": "GET", "endpoint": "/api/admin/stats" },
+    { "method": "GET", "endpoint": "/api/admin/users" },
+    { "method": "GET", "endpoint": "/api/admin/users/:id" },
+    { "method": "PUT", "endpoint": "/api/admin/users/:id/role" },
+    { "method": "PUT", "endpoint": "/api/admin/users/:id/status" },
+    { "method": "GET", "endpoint": "/api/admin/events" },
+    { "method": "PUT", "endpoint": "/api/admin/events/:id/status" }
+  ],
+  "dev": [
+    { "method": "GET", "endpoint": "/api/dev/overview" },
+    { "method": "GET", "endpoint": "/api/dev/users" },
+    { "method": "GET", "endpoint": "/api/dev/logs" },
+    { "method": "GET", "endpoint": "/api/dev/logs/:id" },
+    { "method": "DELETE", "endpoint": "/api/dev/logs" },
+    { "method": "POST", "endpoint": "/api/dev/users/:id/role" },
+    { "method": "GET", "endpoint": "/api/dev/bookings/failed" },
+    { "method": "POST", "endpoint": "/api/dev/bookings/:id/force-pay" }
+  ]
+}
