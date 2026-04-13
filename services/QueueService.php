@@ -43,11 +43,6 @@ class QueueService
     }
   }
 
-  // ============================================================
-  // Convenience methods — one per email type
-  // Makes the calling code clean and readable
-  // ============================================================
-
   public static function sendOTP(string $email, string $name, string $otp, string $type): void
   {
     self::push('send_otp', [
