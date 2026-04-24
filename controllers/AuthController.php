@@ -252,29 +252,70 @@ class AuthController
     }
 
     // check if email exist in database
-    $stmt = $this->db->prepare('SELECT id FROM users WHERE email = ? AND id = ?');
+    $stmt = $this->db->prepare('SELECT id FROM users WHERE email = ?');
     $stmt->execute([$email]);
     $user = $stmt->fetch();
+    $userId = $user['id'];
     if (!$user) {
       Response::error('No account associated with this email!', 404);
     }
-
-    // $userId = $user['id'];
-    // $this->db->prepare("UPDATE email_verifications SET is_used = 1 WHERE user_id = ? AND type = 'forgot_password'")
-    //   ->execute([$userId]);
 
     // Generate OTP and store it
     $otp       = $this->generateOTP();
     $expiresAt = date('Y-m-d H:i:s', strtotime('+30 minutes'));
 
     $this->db->prepare("
-            INSERT INTO email_verifications (email, otp, type, expires_at)
-            VALUES (?, ?, 'forgot_password', ?)
-        ")->execute([$email, $otp, $expiresAt]);
+        INSERT INTO email_verifications (user_id, email, otp, type, expires_at)
+        VALUES (?, ?, ?, 'forgot_password', ?)
+    ")->execute([$userId, $email, $otp, $expiresAt]);
 
+    
     QueueService::sendOTP($email, $otp, 'forgot_password');
 
     Response::success(['message_hint' => "A 6-digit verification code has been sent to {$email}"], 201);
+  }
+
+  // ============================================================
+  // POST /api/auth/verifyForgottenPasswordOtp
+  // ============================================================
+  public function verifyForgottenPasswordOtp(): void
+  {
+    $email = trim($this->request->input('email', ''));
+    $otp = trim($this->request->input('otp', ''));
+
+    if (empty($otp)) {
+      Response::validationError(['otp' => 'OTP is required.']);
+    }
+
+    $stmt = $this->db->prepare("
+            SELECT id, user_id, expires_at FROM email_verifications
+            WHERE email = ? AND otp = ? AND type = 'forgot_password' AND is_used = 0
+            ORDER BY created_at DESC LIMIT 1
+        ");
+    $stmt->execute([$email, $otp]);
+    $record = $stmt->fetch();
+
+    if (!$record) {
+      Response::validationError('Invalid OTP.', 400);
+    }
+
+    $verificationId = $record['id'];
+    $actualUserId = $record['user_id'];
+    
+    if (strtotime($record['expires_at']) < time()) {
+      Response::validationError('This OTP has expired. Please request a new one.', 400);
+    }
+
+    $this->db->prepare("UPDATE email_verifications SET is_used = 1 WHERE id = ? AND type = 'forgot_password'")
+      ->execute([$verificationId]);
+
+    $this->db->prepare("
+            UPDATE users SET email_verified = 1, email_verified_at = NOW() WHERE id = ?
+        ")->execute([$actualUserId]);
+
+    $this->logActivity($actualUserId, 'forgot_password_otp_verified', 'Forgot password OTP verified');
+
+    Response::success(null, 'OTP verified successfully.');
   }
 
   // ============================================================
