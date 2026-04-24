@@ -6,7 +6,10 @@
     { "method": "POST", "endpoint": "/api/auth/logout" },
     { "method": "GET", "endpoint": "/api/auth/me" },
     { "method": "POST", "endpoint": "/api/auth/verify-email" },
-    { "method": "POST", "endpoint": "/api/auth/resend-otp" }
+    { "method": "POST", "endpoint": "/api/auth/resend-otp" },
+    { "method": "POST", "endpoint": "/api/auth/password-otp" },
+    { "method": "POST", "endpoint": "/api/auth/verify-password-otp" },
+    { "method": "POST", "endpoint": "/api/auth/reset-password" }
   ],
   "profile": [
     { "method": "GET", "endpoint": "/api/profile" },
