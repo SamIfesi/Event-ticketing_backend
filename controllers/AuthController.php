@@ -235,6 +235,7 @@ class AuthController
     Response::success(['user' => $user]);
   }
 
+  // START OF FORGOTTON PASSWORD
   // ============================================================
   // POST /api/auth/forgotPasswordOtp
   // ============================================================
@@ -255,10 +256,10 @@ class AuthController
     $stmt = $this->db->prepare('SELECT id FROM users WHERE email = ?');
     $stmt->execute([$email]);
     $user = $stmt->fetch();
-    $userId = $user['id'];
     if (!$user) {
       Response::error('No account associated with this email!', 404);
     }
+    $userId = $user['id'];
 
     // Generate OTP and store it
     $otp       = $this->generateOTP();
@@ -269,7 +270,7 @@ class AuthController
         VALUES (?, ?, ?, 'forgot_password', ?)
     ")->execute([$userId, $email, $otp, $expiresAt]);
 
-    
+
     QueueService::sendOTP($email, $otp, 'forgot_password');
 
     Response::success(['message_hint' => "A 6-digit verification code has been sent to {$email}"], 201);
@@ -283,8 +284,8 @@ class AuthController
     $email = trim($this->request->input('email', ''));
     $otp = trim($this->request->input('otp', ''));
 
-    if (empty($otp)) {
-      Response::validationError(['otp' => 'OTP is required.']);
+    if (empty($email) || empty($otp)) {
+      Response::validationError(['email' => 'Email is required.', 'otp' => 'OTP is required.']);
     }
 
     $stmt = $this->db->prepare("
@@ -296,27 +297,91 @@ class AuthController
     $record = $stmt->fetch();
 
     if (!$record) {
-      Response::validationError('Invalid OTP.', 400);
+      Response::error('Invalid OTP.', 400);
     }
 
     $verificationId = $record['id'];
     $actualUserId = $record['user_id'];
-    
+
     if (strtotime($record['expires_at']) < time()) {
-      Response::validationError('This OTP has expired. Please request a new one.', 400);
+      Response::error('This OTP has expired. Please request a new one.', 400);
     }
 
     $this->db->prepare("UPDATE email_verifications SET is_used = 1 WHERE id = ? AND type = 'forgot_password'")
       ->execute([$verificationId]);
 
+    $resetToken = bin2hex(random_bytes(32));
+    $tokenExpiry = date('Y-m-d H:i:s', strtotime('+15 minutes'));
+
+    // Store it — you can reuse the email_verifications table or a separate column on users
     $this->db->prepare("
-            UPDATE users SET email_verified = 1, email_verified_at = NOW() WHERE id = ?
-        ")->execute([$actualUserId]);
+          UPDATE users SET reset_token = ?, reset_token_expires_at = ? WHERE id = ?
+      ")->execute([$resetToken, $tokenExpiry, $actualUserId]);
 
     $this->logActivity($actualUserId, 'forgot_password_otp_verified', 'Forgot password OTP verified');
 
-    Response::success(null, 'OTP verified successfully.');
+    Response::success(['reset_token' => $resetToken], 'OTP verified successfully.');
   }
+
+  // ============================================================
+  // POST /api/auth/resetPassword
+  // ============================================================
+  public function resetPassword(): void
+  {
+    $resetToken       = trim($this->request->input('reset_token', ''));
+    $newPassword      = trim($this->request->input('new_password', ''));
+    $confirmPassword  = trim($this->request->input('confirm_password', ''));
+
+    $errors = ValidationHelper::check(
+      [
+        'reset_token'      => $resetToken,
+        'new_password'     => $newPassword,
+        'confirm_password' => $confirmPassword,
+      ],
+      [
+        'reset_token'      => 'required',
+        'new_password'     => 'required|min:8|max:64',
+        'confirm_password' => 'required|confirm:new_password',
+      ]
+    );
+
+    if (!empty($errors)) {
+      Response::validationError($errors);
+    }
+
+    // Look up the token
+    $stmt = $this->db->prepare("
+    SELECT id FROM users
+    WHERE reset_token = ? AND reset_token_expires_at > NOW()
+  ");
+    $stmt->execute([$resetToken]);
+    $user = $stmt->fetch();
+
+    if (!$user) {
+      Response::error('Invalid or expired reset token.', 400);
+    }
+
+    $userId = $user['id'];
+
+    // Update password and clear the reset token
+    $hashedPassword = password_hash($newPassword, PASSWORD_BCRYPT);
+
+    $this->db->prepare("
+    UPDATE users
+    SET password_hash         = ?,
+        reset_token           = NULL,
+        reset_token_expires_at = NULL,
+        updated_at            = NOW()
+    WHERE id = ?
+  ")->execute([$hashedPassword, $userId]);
+
+    $this->logActivity($userId, 'password_reset', 'Password reset successfully');
+
+    Response::success(null, 'Password reset successfully. You can now log in.');
+  }
+
+  // END OF FORGOTTON PASSWORD
+
 
   // ============================================================
   // PRIVATE HELPERS
