@@ -236,6 +236,48 @@ class AuthController
   }
 
   // ============================================================
+  // POST /api/auth/forgotPasswordOtp
+  // ============================================================
+  public function forgotPasswordOtp(): void
+  {
+    $email = trim($this->request->input('email', '')); // Get email from request
+
+    $errors = ValidationHelper::check(
+      ['email' => $email],
+      ['email' => 'required|email']
+    );
+
+    if (!empty($errors)) {
+      Response::validationError($errors);
+    }
+
+    // check if email exist in database
+    $stmt = $this->db->prepare('SELECT id FROM users WHERE email = ? AND id = ?');
+    $stmt->execute([$email]);
+    $user = $stmt->fetch();
+    if (!$user) {
+      Response::error('No account associated with this email!', 404);
+    }
+
+    // $userId = $user['id'];
+    // $this->db->prepare("UPDATE email_verifications SET is_used = 1 WHERE user_id = ? AND type = 'forgot_password'")
+    //   ->execute([$userId]);
+
+    // Generate OTP and store it
+    $otp       = $this->generateOTP();
+    $expiresAt = date('Y-m-d H:i:s', strtotime('+30 minutes'));
+
+    $this->db->prepare("
+            INSERT INTO email_verifications (email, otp, type, expires_at)
+            VALUES (?, ?, 'forgot_password', ?)
+        ")->execute([$email, $otp, $expiresAt]);
+
+    QueueService::sendOTP($email, $otp, 'forgot_password');
+
+    Response::success(['message_hint' => "A 6-digit verification code has been sent to {$email}"], 201);
+  }
+
+  // ============================================================
   // PRIVATE HELPERS
   // ============================================================
 
