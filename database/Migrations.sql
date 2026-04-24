@@ -26,7 +26,7 @@ CREATE TABLE email_verifications (
     user_id    INT UNSIGNED  NOT NULL,
     email      VARCHAR(200)  NOT NULL,          -- the email being verified
     otp        VARCHAR(6)    NOT NULL,           -- 6-digit code
-    type       ENUM('register', 'email_change') NOT NULL DEFAULT 'register',
+    type       ENUM('register', 'email_change', 'forgot_password') NOT NULL DEFAULT 'register',
     is_used    TINYINT(1)    DEFAULT 0,
     expires_at DATETIME      NOT NULL,           -- OTP expires after 10 minutes
     created_at DATETIME      DEFAULT CURRENT_TIMESTAMP,
