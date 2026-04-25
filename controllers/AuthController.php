@@ -271,7 +271,7 @@ class AuthController
     ")->execute([$userId, $email, $otp, $expiresAt]);
 
 
-    QueueService::sendOTP($email, $otp, 'forgot_password');
+    QueueService::sendOTP($userId, $email, $otp, 'forgot_password');
 
     Response::success(['message_hint' => "A 6-digit verification code has been sent to {$email}"], 201);
   }
