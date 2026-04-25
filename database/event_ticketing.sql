@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 24, 2026 at 07:45 PM
+-- Generation Time: Apr 25, 2026
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -11,16 +11,13 @@ SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
 SET time_zone = "+00:00";
 
-
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
 /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
 /*!40101 SET NAMES utf8mb4 */;
 
---
+-- --------------------------------------------------------
 -- Database: `event_ticketing`
---
-
 -- --------------------------------------------------------
 
 --
@@ -39,21 +36,16 @@ CREATE TABLE `activity_logs` (
 
 --
 -- Dumping data for table `activity_logs`
+-- (Only Sam Dev's logs — user_id = 1)
 --
 
 INSERT INTO `activity_logs` (`id`, `user_id`, `action`, `description`, `ip_address`, `created_at`, `updated_at`) VALUES
 (22, 1, 'login', 'Logged in', '::1', '2026-04-11 17:26:54', '2026-04-11 17:26:54'),
 (23, 1, 'login', 'Logged in', '::1', '2026-04-11 17:27:36', '2026-04-11 17:27:36'),
-(24, 2, 'register', 'Account created', '::1', '2026-04-11 17:46:30', '2026-04-11 17:46:30'),
-(25, 3, 'register', 'Account created', '::1', '2026-04-23 17:12:23', '2026-04-23 17:12:23'),
 (26, 1, 'login', 'Logged in', '::1', '2026-04-23 18:42:13', '2026-04-23 18:42:13'),
 (27, 1, 'login', 'Logged in', '::1', '2026-04-23 18:42:43', '2026-04-23 18:42:43'),
 (28, 1, 'email_verified', 'Email address verified', '::1', '2026-04-24 14:01:51', '2026-04-24 14:01:51'),
-(29, 1, 'login', 'Logged in', '::1', '2026-04-24 14:08:22', '2026-04-24 14:08:22'),
-(30, 3, 'login', 'Logged in', '::1', '2026-04-24 14:14:52', '2026-04-24 14:14:52'),
-(31, 3, 'logout', 'Logged out', '::1', '2026-04-24 14:38:39', '2026-04-24 14:38:39'),
-(32, 3, 'login', 'Logged in', '::1', '2026-04-24 14:54:42', '2026-04-24 14:54:42'),
-(33, 3, 'logout', 'Logged out', '::1', '2026-04-24 14:54:48', '2026-04-24 14:54:48');
+(29, 1, 'login', 'Logged in', '::1', '2026-04-24 14:08:22', '2026-04-24 14:08:22');
 
 -- --------------------------------------------------------
 
@@ -89,10 +81,6 @@ CREATE TABLE `categories` (
   `icon` varchar(20) DEFAULT 'ticket',
   `created_at` datetime DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `categories`
---
 
 INSERT INTO `categories` (`id`, `name`, `slug`, `icon`, `created_at`) VALUES
 (1, 'Music', 'music', 'music', '2026-04-08 13:09:02'),
@@ -141,14 +129,12 @@ CREATE TABLE `email_verifications` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `email_verifications`
+-- Only Sam Dev's verified OTP records
 --
 
-INSERT INTO `email_verifications` (`id`, `user_id`, `email`, `otp`, `type`, `is_used`, `expires_at`, `created_at`, `updated_at`) VALUES
-(16, 1, 'sam@dev.local', '586208', 'register', 1, '2026-04-11 19:04:53', '2026-04-11 17:34:53', '2026-04-24 13:52:56'),
-(17, 2, 'ifesinachisamrose@gmail.com', '196124', 'register', 0, '2026-04-11 19:16:29', '2026-04-11 17:46:30', '2026-04-11 17:46:30'),
-(18, 3, 'test@example.us', '336821', 'register', 0, '2026-04-23 18:42:23', '2026-04-23 17:12:23', '2026-04-23 17:12:23'),
-(19, 1, 'sam@dev.local', '699711', 'register', 1, '2026-04-24 15:22:56', '2026-04-24 13:52:56', '2026-04-24 14:01:50');
+-- INSERT INTO `email_verifications` (`id`, `user_id`, `email`, `otp`, `type`, `is_used`, `expires_at`, `created_at`, `updated_at`) VALUES
+-- (16, 1, 'sam@dev.local', '586208', 'register', 1, '2026-04-11 19:04:53', '2026-04-11 17:34:53', '2026-04-24 13:52:56'),
+-- (19, 1, 'sam@dev.local', '699711', 'register', 1, '2026-04-24 15:22:56', '2026-04-24 13:52:56', '2026-04-24 14:01:50');
 
 -- --------------------------------------------------------
 
@@ -174,10 +160,6 @@ CREATE TABLE `events` (
   `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `events`
---
-
 INSERT INTO `events` (`id`, `organizer_id`, `category_id`, `title`, `slug`, `description`, `location`, `banner_image`, `start_date`, `end_date`, `total_tickets`, `tickets_sold`, `status`, `created_at`, `updated_at`) VALUES
 (1, 1, 1, 'Lagos Tech Summit 2026', 'lagos-tech-summit-2026', 'A gathering of the best tech minds in Nigeria', 'Eko Hotel, Lagos', NULL, '2026-06-15 09:00:00', '2026-06-15 17:00:00', 200, 0, 'published', '2026-04-10 17:05:05', '2026-04-10 17:05:05');
 
@@ -201,13 +183,7 @@ CREATE TABLE `jobs` (
   `completed_at` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `jobs`
---
-
-INSERT INTO `jobs` (`id`, `type`, `payload`, `status`, `attempts`, `max_attempts`, `error`, `available_at`, `created_at`, `updated_at`, `completed_at`) VALUES
-(5, 'send_otp', '{\"email\":\"test@example.us\",\"name\":\"Jon Stewart Doe\",\"otp\":\"336821\",\"type\":\"register\"}', 'pending', 1, 3, 'Mail send returned false — check SMTP credentials.', '2026-04-23 18:19:11', '2026-04-23 17:12:23', '2026-04-23 17:18:11', NULL),
-(6, 'send_otp', '{\"email\":\"sam@dev.local\",\"name\":\"Sam Dev\",\"otp\":\"699711\",\"type\":\"register\"}', 'pending', 0, 3, NULL, '2026-04-24 13:52:57', '2026-04-24 13:52:57', '2026-04-24 13:52:57', NULL);
+-- (jobs table intentionally left empty — stale OTP jobs cleared)
 
 -- --------------------------------------------------------
 
@@ -269,28 +245,20 @@ CREATE TABLE `users` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `users`
+-- Only Sam Dev — email_verified set to 1
 --
 
 INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `email_verified`, `email_verified_at`, `avatar`, `is_active`, `created_at`, `updated_at`, `reset_token`, `reset_token_expires_at`) VALUES
-(1, 'Sam Dev', 'sam@dev.local', '$2a$13$PifloQ/KgrZjNJkbAw.J1e6/f3kgC3w7Faieinzd5RWGAAvxM4KI2', 'dev', 1, '2026-04-24 14:01:51', NULL, 1, '2026-04-11 17:19:33', '2026-04-24 14:01:51', NULL, NULL),
-(2, 'Rose Ifesinachi', 'ifesinachisamrose@gmail.com', '$2y$10$UGNQuyosOBdBM2kSvFi9W.a07GfDWItSN6yCZLX1Xr2H90rsuSJDO', 'attendee', 0, NULL, NULL, 1, '2026-04-11 17:46:29', '2026-04-11 17:46:29', NULL, NULL),
-(3, 'Jon Stewart Doe', 'test@example.us', '$2y$10$RUbQDTQkMvC.zlIeVn4wHebAM/UuFwYE4IwtAc0L/nFy5CH6b5RCy', 'attendee', 0, NULL, NULL, 1, '2026-04-23 17:12:23', '2026-04-23 17:12:23', NULL, NULL);
+(1, 'Sam Dev', 'sam@dev.local', '$2a$13$PifloQ/KgrZjNJkbAw.J1e6/f3kgC3w7Faieinzd5RWGAAvxM4KI2', 'dev', 1, '2026-04-24 14:01:51', NULL, 1, '2026-04-11 17:19:33', '2026-04-24 14:01:51', NULL, NULL);
 
---
--- Indexes for dumped tables
---
+-- --------------------------------------------------------
+-- Indexes
+-- --------------------------------------------------------
 
---
--- Indexes for table `activity_logs`
---
 ALTER TABLE `activity_logs`
   ADD PRIMARY KEY (`id`),
   ADD KEY `user_id` (`user_id`);
 
---
--- Indexes for table `bookings`
---
 ALTER TABLE `bookings`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `paystack_reference` (`paystack_reference`),
@@ -298,45 +266,27 @@ ALTER TABLE `bookings`
   ADD KEY `event_id` (`event_id`),
   ADD KEY `ticket_type_id` (`ticket_type_id`);
 
---
--- Indexes for table `categories`
---
 ALTER TABLE `categories`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `slug` (`slug`);
 
---
--- Indexes for table `dev_logs`
---
 ALTER TABLE `dev_logs`
   ADD PRIMARY KEY (`id`);
 
---
--- Indexes for table `email_verifications`
---
 ALTER TABLE `email_verifications`
   ADD PRIMARY KEY (`id`),
   ADD KEY `user_id` (`user_id`);
 
---
--- Indexes for table `events`
---
 ALTER TABLE `events`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `slug` (`slug`),
   ADD KEY `organizer_id` (`organizer_id`),
   ADD KEY `category_id` (`category_id`);
 
---
--- Indexes for table `jobs`
---
 ALTER TABLE `jobs`
   ADD PRIMARY KEY (`id`),
   ADD KEY `idx_jobs_status_available` (`status`,`available_at`);
 
---
--- Indexes for table `tickets`
---
 ALTER TABLE `tickets`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `qr_token` (`qr_token`),
@@ -344,128 +294,56 @@ ALTER TABLE `tickets`
   ADD KEY `user_id` (`user_id`),
   ADD KEY `event_id` (`event_id`);
 
---
--- Indexes for table `ticket_types`
---
 ALTER TABLE `ticket_types`
   ADD PRIMARY KEY (`id`),
   ADD KEY `event_id` (`event_id`);
 
---
--- Indexes for table `users`
---
 ALTER TABLE `users`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `email` (`email`);
 
---
--- AUTO_INCREMENT for dumped tables
---
+-- --------------------------------------------------------
+-- AUTO_INCREMENT
+-- --------------------------------------------------------
 
---
--- AUTO_INCREMENT for table `activity_logs`
---
-ALTER TABLE `activity_logs`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=34;
+ALTER TABLE `activity_logs`  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=34;
+ALTER TABLE `bookings`        MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+ALTER TABLE `categories`      MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+ALTER TABLE `dev_logs`        MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+ALTER TABLE `email_verifications` MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
+ALTER TABLE `events`          MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+ALTER TABLE `jobs`            MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+ALTER TABLE `tickets`         MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+ALTER TABLE `ticket_types`    MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+ALTER TABLE `users`           MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
---
--- AUTO_INCREMENT for table `bookings`
---
-ALTER TABLE `bookings`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+-- --------------------------------------------------------
+-- Foreign Key Constraints
+-- --------------------------------------------------------
 
---
--- AUTO_INCREMENT for table `categories`
---
-ALTER TABLE `categories`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
-
---
--- AUTO_INCREMENT for table `dev_logs`
---
-ALTER TABLE `dev_logs`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `email_verifications`
---
-ALTER TABLE `email_verifications`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
-
---
--- AUTO_INCREMENT for table `events`
---
-ALTER TABLE `events`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
-
---
--- AUTO_INCREMENT for table `jobs`
---
-ALTER TABLE `jobs`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
-
---
--- AUTO_INCREMENT for table `tickets`
---
-ALTER TABLE `tickets`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `ticket_types`
---
-ALTER TABLE `ticket_types`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
-
---
--- AUTO_INCREMENT for table `users`
---
-ALTER TABLE `users`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
-
---
--- Constraints for dumped tables
---
-
---
--- Constraints for table `activity_logs`
---
 ALTER TABLE `activity_logs`
   ADD CONSTRAINT `activity_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
---
--- Constraints for table `bookings`
---
 ALTER TABLE `bookings`
   ADD CONSTRAINT `bookings_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `bookings_ibfk_2` FOREIGN KEY (`event_id`) REFERENCES `events` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `bookings_ibfk_3` FOREIGN KEY (`ticket_type_id`) REFERENCES `ticket_types` (`id`) ON DELETE CASCADE;
 
---
--- Constraints for table `email_verifications`
---
 ALTER TABLE `email_verifications`
   ADD CONSTRAINT `email_verifications_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
---
--- Constraints for table `events`
---
 ALTER TABLE `events`
   ADD CONSTRAINT `events_ibfk_1` FOREIGN KEY (`organizer_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `events_ibfk_2` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL;
 
---
--- Constraints for table `tickets`
---
 ALTER TABLE `tickets`
   ADD CONSTRAINT `tickets_ibfk_1` FOREIGN KEY (`booking_id`) REFERENCES `bookings` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `tickets_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `tickets_ibfk_3` FOREIGN KEY (`event_id`) REFERENCES `events` (`id`) ON DELETE CASCADE;
 
---
--- Constraints for table `ticket_types`
---
 ALTER TABLE `ticket_types`
   ADD CONSTRAINT `ticket_types_ibfk_1` FOREIGN KEY (`event_id`) REFERENCES `events` (`id`) ON DELETE CASCADE;
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
