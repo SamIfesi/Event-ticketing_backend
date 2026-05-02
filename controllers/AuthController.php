@@ -366,7 +366,6 @@ class AuthController
 
     // Update password and clear the reset token
     $hashedPassword = password_hash($newPassword, PASSWORD_BCRYPT);
-
     $this->db->prepare("
     UPDATE users
     SET password_hash         = ?,
