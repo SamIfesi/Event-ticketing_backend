@@ -50,6 +50,7 @@ require_once __DIR__ . '/controllers/EventController.php';
 require_once __DIR__ . '/controllers/BookingController.php';
 require_once __DIR__ . '/controllers/TicketController.php';
 require_once __DIR__ . '/controllers/CategoryController.php';
+require_once __DIR__ . '/controllers/OrganizerApplicationController.php';
 require_once __DIR__ . '/controllers/AdminController.php';
 require_once __DIR__ . '/controllers/DevController.php';
 
@@ -82,6 +83,7 @@ require_once __DIR__ . '/routes/events.php';
 require_once __DIR__ . '/routes/bookings.php';
 require_once __DIR__ . '/routes/tickets.php';
 require_once __DIR__ . '/routes/categories.php';
+require_once __DIR__ . '/routes/organizer_applications.php';
 require_once __DIR__ . '/routes/admin.php';
 require_once __DIR__ . '/routes/dev.php';
 
