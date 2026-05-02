@@ -68,5 +68,48 @@ class OrganizerApplicationController
       ],
     ]);
   }
-}
 
+  // PUT /api/admin/organizer-applications/:id/approve
+  public function approve(array $params): void
+  {
+    $this->reviewApplication((int) $params['id'], 'approved');
+  }
+
+  // PUT /api/admin/organizer-applications/:id/reject
+  public function reject(array $params): void
+  {
+    $this->reviewApplication((int) $params['id'], 'rejected');
+  }
+
+  private function reviewAPplication(int $applicationId, string $decision): void
+  {
+    $adminId = $this->request->user['id'];
+
+    $stmt = $this->db->prepare(
+      " SELECT a.*, u.role AS current_role FROM organizer_applications a JOIN users u ON u.id = a.user_id WHERE a.id = ?"
+    );
+
+    $stmt->execute([$application]);
+    $application = $stmt->fetch();
+
+    if (!application) {
+      Response::error('Application not found.', 404);
+      return;
+    }
+
+    if ($application['status'] !== 'pending') {
+      Response::error('Application has already been reviewed.', 400);
+      return;
+    }
+
+    if ($decision === 'approved') {
+      $this->db->prepare(
+        "UPDATE users SET role = ? WHERE id = ?"
+      )->execute([Constants::ROLE_ORGANIZER, $application['user_id']]);
+    }
+
+    $message = $decision === 'approved' ? 'Application approved. User has been upgraded to organizer.' : 'Application rejected.';
+
+    Response::success(null, $message);
+  }
+}
