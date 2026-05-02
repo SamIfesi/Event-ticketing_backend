@@ -49,6 +49,13 @@
     { "method": "PUT", "endpoint": "/api/categories/:id" },
     { "method": "DELETE", "endpoint": "/api/categories/:id" }
   ],
+  "organizer_applications": [
+    { "method": "POST", "endpoint": "/api/org_applications" },
+    { "method": "GET",  "endpoint": "/api/org_applications/mine" },
+    { "method": "GET",  "endpoint": "/api/admin/org_applications" },
+    { "method": "PUT",  "endpoint": "/api/admin/org_applications/:id/approve" },
+    { "method": "PUT",  "endpoint": "/api/admin/org_applications/:id/reject" }
+  ],
   "admin": [
     { "method": "GET", "endpoint": "/api/admin/stats" },
     { "method": "GET", "endpoint": "/api/admin/users" },
