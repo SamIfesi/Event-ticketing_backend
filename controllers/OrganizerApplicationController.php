@@ -41,12 +41,12 @@ class OrganizerApplicationController
     }
 
     $orgName    = trim($this->request->input('org_name', ''));
-    $eventTypes = trim($this->request->input('event_type', ''));
+    $eventType = trim($this->request->input('event_type', ''));
     $phone      = trim($this->request->input('phone', ''));
     $reason     = trim($this->request->input('reason', ''));
 
     $errors = ValidationHelper::check(
-      ['org_name' => $orgName, 'event_type' => $eventTypes, 'phone' => $phone],
+      ['org_name' => $orgName, 'event_type' => $eventType, 'phone' => $phone],
       [
         'org_name'    => 'required|min:2|max:255',
         'event_type' => 'required|min:2|max:255',
@@ -61,7 +61,7 @@ class OrganizerApplicationController
     $this->db->prepare("
       INSERT INTO organizer_applications (user_id, org_name, event_type, phone, reason)
       VALUES (?, ?, ?, ?, ?)
-    ")->execute([$userId, $orgName, $eventTypes, $phone, $reason ?: null]);
+    ")->execute([$userId, $orgName, $eventType, $phone, $reason ?: null]);
 
     Response::success(null, 'Application submitted successfully. We will review it shortly.', 201);
   }
