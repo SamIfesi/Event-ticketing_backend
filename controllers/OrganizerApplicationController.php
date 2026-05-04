@@ -41,16 +41,16 @@ class OrganizerApplicationController
     }
 
     $orgName    = trim($this->request->input('org_name', ''));
-    $eventTypes = trim($this->request->input('event_types', ''));
+    $eventTypes = trim($this->request->input('event_type', ''));
     $phone      = trim($this->request->input('phone', ''));
     $reason     = trim($this->request->input('reason', ''));
 
     $errors = ValidationHelper::check(
-      ['org_name' => $orgName, 'event_types' => $eventTypes, 'phone' => $phone],
+      ['org_name' => $orgName, 'event_type' => $eventTypes, 'phone' => $phone],
       [
         'org_name'    => 'required|min:2|max:255',
-        'event_types' => 'required|min:2|max:255',
-        'phone'       => 'required|min:7|max:20',
+        'event_type' => 'required|min:2|max:255',
+        'phone'       => 'required|min:10|max:14',
       ]
     );
 
@@ -59,7 +59,7 @@ class OrganizerApplicationController
     }
 
     $this->db->prepare("
-      INSERT INTO organizer_applications (user_id, org_name, event_types, phone, reason)
+      INSERT INTO organizer_applications (user_id, org_name, event_type, phone, reason)
       VALUES (?, ?, ?, ?, ?)
     ")->execute([$userId, $orgName, $eventTypes, $phone, $reason ?: null]);
 
@@ -73,7 +73,7 @@ class OrganizerApplicationController
     $userId = $this->request->user['id'];
 
     $stmt = $this->db->prepare("
-      SELECT id, org_name, event_types, phone, reason, status, created_at, reviewed_at
+      SELECT id, org_name, event_type, phone, reason, status, created_at, reviewed_at
       FROM organizer_applications
       WHERE user_id = ?
       ORDER BY created_at DESC
@@ -117,7 +117,7 @@ class OrganizerApplicationController
       SELECT
         a.id,
         a.org_name,
-        a.event_types,
+        a.event_type,
         a.phone,
         a.reason,
         a.status,
