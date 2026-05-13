@@ -1,6 +1,5 @@
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
-SET time_zone = "+00:00";
 
 CREATE DATABASE IF NOT EXISTS `ticketer_db` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
 USE `ticketer_db`;
@@ -20,7 +19,7 @@ CREATE TABLE IF NOT EXISTS `activity_logs` (
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`)
   -- !! No FOREIGN KEY — logs are immutable, must outlive any row they reference !!
-) ENGINE=InnoDB AUTO_INCREMENT=220 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- bookings
@@ -48,7 +47,7 @@ CREATE TABLE IF NOT EXISTS `bookings` (
   KEY `user_id`        (`user_id`),
   KEY `event_id`       (`event_id`),
   KEY `ticket_type_id` (`ticket_type_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
 CREATE TABLE IF NOT EXISTS `categories` (
@@ -59,7 +58,7 @@ CREATE TABLE IF NOT EXISTS `categories` (
   `created_at` datetime     DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `slug` (`slug`)
-) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;;
 
 TRUNCATE TABLE `categories`;
 INSERT INTO `categories` (`id`, `name`, `slug`, `icon`) VALUES
@@ -84,7 +83,7 @@ CREATE TABLE IF NOT EXISTS `dev_logs` (
   `response_code` int(11)      DEFAULT NULL,
   `created_at`    datetime     DEFAULT current_timestamp(),
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- email_verifications  (CASCADE is fine — these are temporary)
@@ -101,7 +100,7 @@ CREATE TABLE IF NOT EXISTS `email_verifications` (
   `updated_at` datetime     DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=35 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- events
@@ -130,7 +129,7 @@ CREATE TABLE IF NOT EXISTS `events` (
   UNIQUE KEY `slug` (`slug`),
   KEY `organizer_id` (`organizer_id`),
   KEY `category_id`  (`category_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
 CREATE TABLE IF NOT EXISTS `jobs` (
@@ -147,7 +146,7 @@ CREATE TABLE IF NOT EXISTS `jobs` (
   `completed_at` datetime     DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_jobs_status_available` (`status`,`available_at`)
-) ENGINE=InnoDB AUTO_INCREMENT=22 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- organizer_applications
@@ -172,7 +171,7 @@ CREATE TABLE IF NOT EXISTS `organizer_applications` (
   PRIMARY KEY (`id`),
   KEY `user_id`     (`user_id`),
   KEY `reviewed_by` (`reviewed_by`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- tickets
@@ -195,7 +194,7 @@ CREATE TABLE IF NOT EXISTS `tickets` (
   KEY `booking_id` (`booking_id`),
   KEY `user_id`    (`user_id`),
   KEY `event_id`   (`event_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- ticket_types
@@ -217,7 +216,7 @@ CREATE TABLE IF NOT EXISTS `ticket_types` (
   PRIMARY KEY (`id`),
   KEY `event_id` (`event_id`),
   CONSTRAINT `chk_no_oversell` CHECK (`quantity_sold` <= `quantity`)  -- [B]
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
 -- users  (unchanged)
@@ -238,7 +237,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `reset_token_expires_at` datetime     DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 TRUNCATE TABLE `users`;
 INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `email_verified`, `email_verified_at`, `is_active`) VALUES
