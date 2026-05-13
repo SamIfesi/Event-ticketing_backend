@@ -2,8 +2,7 @@
 
 class Database
 {
-  // Holds the single PDO instance
-  private static ?PDO $instance = null;
+  private static ?PDO $instance = null;                               // Holds the single PDO instance
 
   private function __construct() {}
 
@@ -19,16 +18,13 @@ class Database
 
       try {
         self::$instance = new PDO($dsn, $user, $pass, [
-          // Throw exceptions on errors instead of silent failures
-          PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-          // Return results as associative arrays by default
-          PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-          // Disable emulated prepares for true prepared statements
-          PDO::ATTR_EMULATE_PREPARES   => false,
+          PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,     // Throw exceptions on errors instead of silent failures
+          PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,           // Return results as associative arrays by default
+          PDO::ATTR_EMULATE_PREPARES   => false,                      // Disable emulated prepares for true prepared statements
         ]);
+        self::$instance->exec("SET time_zone = '+00:00'");            // Ensure all timestamps are stored in UTC
       } catch (PDOException $e) {
-        // In production you would log this, not expose the message
-        http_response_code(500);
+        http_response_code(500);                                      // In production you would log this, not expose the message
         echo json_encode(['error' => $e->getMessage()]);
         exit;
       }
