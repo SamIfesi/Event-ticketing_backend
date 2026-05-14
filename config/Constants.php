@@ -20,6 +20,7 @@ class Constants
     const EVENT_PUBLISHED  = 'published';
     const EVENT_CANCELLED  = 'cancelled';
     const EVENT_COMPLETED  = 'completed';
+    const EVENT_DELETED    = 'deleted';
 
     // Payment statuses — must match ENUM in bookings table
     const PAYMENT_PENDING  = 'pending';
