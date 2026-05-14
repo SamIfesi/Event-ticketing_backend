@@ -2,6 +2,10 @@ Options -Indexes
 
 RewriteEngine On
 
+# Always allow OPTIONS through to PHP for CORS preflight
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ index.php [QSA,L]
+
 # Allow actual files and folders to load directly (e.g. storage/tickets/ticket.pdf)
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
