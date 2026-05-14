@@ -11,13 +11,11 @@ class OrganizerApplicationController
     $this->db      = Database::connect();
   }
 
-  // POST /api/organizer-applications
-  // Attendee submits an application to become an organizer
-  // admin sees all application with filter
+  // POST /api/org_applications
   public function store(): void
   {
-    $userId    = $this->request->user['id'];
-    $role      = $this->request->user['role'];
+    $userId = $this->request->user['id'];
+    $role   = $this->request->user['role'];
 
     // Only attendees can apply — organizers/admins already have access
     if ($role !== Constants::ROLE_ATTENDEE) {
@@ -40,17 +38,17 @@ class OrganizerApplicationController
       Response::error($msg, 409);
     }
 
-    $orgName    = trim($this->request->input('org_name', ''));
+    $orgName   = trim($this->request->input('org_name', ''));
     $eventType = trim($this->request->input('event_type', ''));
-    $phone      = trim($this->request->input('phone', ''));
-    $reason     = trim($this->request->input('reason', ''));
+    $phone     = trim($this->request->input('phone', ''));
+    $reason    = trim($this->request->input('reason', ''));
 
     $errors = ValidationHelper::check(
       ['org_name' => $orgName, 'event_type' => $eventType, 'phone' => $phone],
       [
-        'org_name'    => 'required|min:2|max:255',
+        'org_name'   => 'required|min:2|max:255',
         'event_type' => 'required|min:2|max:255',
-        'phone'       => 'required|min:10|max:14',
+        'phone'      => 'required|min:10|max:14',
       ]
     );
 
@@ -66,8 +64,7 @@ class OrganizerApplicationController
     Response::success(null, 'Application submitted successfully. We will review it shortly.', 201);
   }
 
-  // GET /api/organizer-applications/mine
-  // Attendee checks the status of their own application
+  // GET /api/org_applications/mine
   public function mine(): void
   {
     $userId = $this->request->user['id'];
@@ -85,8 +82,7 @@ class OrganizerApplicationController
     Response::success(['application' => $application ?: null]);
   }
 
-  // GET /api/admin/organizer-applications
-  // Admin sees all applications with filters
+  // GET /api/admin/org_applications
   public function index(): void
   {
     $page   = max(1, (int) $this->request->query('page', '1'));
@@ -148,13 +144,13 @@ class OrganizerApplicationController
     ]);
   }
 
-  // PUT /api/admin/organizer-applications/:id/approve
+  // PUT /api/admin/org_applications/:id/approve
   public function approve(array $params): void
   {
     $this->reviewApplication((int) $params['id'], 'approved');
   }
 
-  // PUT /api/admin/organizer-applications/:id/reject
+  // PUT /api/admin/org_applications/:id/reject
   public function reject(array $params): void
   {
     $this->reviewApplication((int) $params['id'], 'rejected');
@@ -164,41 +160,46 @@ class OrganizerApplicationController
   {
     $adminId = $this->request->user['id'];
 
-    $stmt = $this->db->prepare("
-      SELECT a.*, u.role AS current_role
-      FROM organizer_applications a
-      JOIN users u ON u.id = a.user_id
-      WHERE a.id = ?
-    ");
-    $stmt->execute([$applicationId]);
-    $application = $stmt->fetch();
+    try {
+      // FIX: renamed current_role -> user_role (current_role is a reserved word in MariaDB)
+      $stmt = $this->db->prepare("
+        SELECT a.*, u.role AS user_role
+        FROM organizer_applications a
+        JOIN users u ON u.id = a.user_id
+        WHERE a.id = ?
+      ");
+      $stmt->execute([$applicationId]);
+      $application = $stmt->fetch();
 
-    if (!$application) {
-      Response::notFound('Application not found.');
-    }
+      if (!$application) {
+        Response::notFound('Application not found.');
+      }
 
-    if ($application['status'] !== 'pending') {
-      Response::error('This application has already been reviewed.', 400);
-    }
+      if ($application['status'] !== 'pending') {
+        Response::error('This application has already been reviewed.', 400);
+      }
 
     // Update the application status
-    $this->db->prepare("
-      UPDATE organizer_applications
-      SET status = ?, reviewed_by = ?, reviewed_at = NOW()
-      WHERE id = ?
-    ")->execute([$decision, $adminId, $applicationId]);
+      $this->db->prepare("
+        UPDATE organizer_applications
+        SET status = ?, reviewed_by = ?, reviewed_at = NOW()
+        WHERE id = ?
+      ")->execute([$decision, $adminId, $applicationId]);
 
     // If approved, upgrade the user's role immediately
-    if ($decision === 'approved') {
-      $this->db->prepare("
-        UPDATE users SET role = ? WHERE id = ?
-      ")->execute([Constants::ROLE_ORGANIZER, $application['user_id']]);
+      if ($decision === 'approved') {
+        $this->db->prepare("
+          UPDATE users SET role = ? WHERE id = ?
+        ")->execute([Constants::ROLE_ORGANIZER, $application['user_id']]);
+      }
+
+      $message = $decision === 'approved'
+        ? 'Application approved. User has been upgraded to organizer.'
+        : 'Application rejected.';
+
+      Response::success(null, $message);
+    } catch (PDOException $e) {
+      Response::error('Database error: ' . $e->getMessage(), 500);
     }
-
-    $message = $decision === 'approved'
-      ? 'Application approved. User has been upgraded to organizer.'
-      : 'Application rejected.';
-
-    Response::success(null, $message);
   }
 }
