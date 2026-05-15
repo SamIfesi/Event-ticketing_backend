@@ -24,12 +24,10 @@ class BookingController
     $ticketTypeId = (int) $this->request->input('ticket_type_id');
     $quantity     = max(1, (int) $this->request->input('quantity', 1));
 
-    // 1. Validate input
     if (!$ticketTypeId) {
       Response::validationError(['ticket_type_id' => 'Please select a ticket type.']);
     }
 
-    // 2. Fetch the ticket type and its event
     $stmt = $this->db->prepare("
             SELECT
                 tt.*,
@@ -104,7 +102,7 @@ class BookingController
     // 10. Initialize transaction with Paystack
     //     If Paystack is down or the key is wrong, we catch the error
     try {
-      $paystack = new PaystackService();
+      $paystack    = new PaystackService();
       $transaction = $paystack->initializeTransaction(
         $userEmail,
         $totalAmount,
@@ -134,8 +132,14 @@ class BookingController
   // ============================================================
   // POST /api/bookings/verify
   // Protected: attendee or dev
-  // Step 2 of payment flow — called after Paystack redirects back
-  // Verifies payment is real, then issues tickets
+  // Step 2 — verifies Paystack payment and issues tickets.
+  //
+  // FIX #1: Removed the two manual UPDATE statements that were
+  // incrementing ticket_types.quantity_sold and events.tickets_sold.
+  // Both are now handled automatically:
+  //   - ticket_types.quantity_sold → trg_booking_paid trigger
+  //   - events.tickets_sold        → column removed; use v_event_sales
+  // Keeping those updates here caused double-increments on every payment.
   // ============================================================
   public function verify(): void
   {
@@ -148,10 +152,13 @@ class BookingController
 
     // 1. Find the booking by reference
     $stmt = $this->db->prepare("
-            SELECT b.*, tt.name AS ticket_type_name, e.title AS event_title
+            SELECT b.*, tt.name AS ticket_type_name, e.title AS event_title,
+                   e.location AS event_location, e.start_date AS event_start_date,
+                   u.name AS user_name, u.email AS user_email
             FROM bookings b
             JOIN ticket_types tt ON tt.id = b.ticket_type_id
-            JOIN events e ON e.id = b.event_id
+            JOIN events e        ON e.id  = b.event_id
+            JOIN users u         ON u.id  = b.user_id
             WHERE b.paystack_reference = ?
         ");
     $stmt->execute([$reference]);
@@ -175,8 +182,8 @@ class BookingController
     // 4. Verify with Paystack — this is the critical step
     //    We ask Paystack directly: "did this payment actually go through?"
     try {
-      $paystack     = new PaystackService();
-      $transaction  = $paystack->verifyTransaction($reference);
+      $paystack    = new PaystackService();
+      $transaction = $paystack->verifyTransaction($reference);
     } catch (Exception $e) {
       Response::error('Could not verify payment. Please contact support.', 500);
     }
@@ -184,10 +191,8 @@ class BookingController
     // 5. Check Paystack says payment was successful
     if ($transaction['status'] !== 'success') {
       // Mark booking as failed
-      $this->db->prepare("
-                UPDATE bookings SET payment_status = 'failed' WHERE id = ?
-            ")->execute([$booking['id']]);
-
+      $this->db->prepare("UPDATE bookings SET payment_status = 'failed' WHERE id = ?")
+        ->execute([$booking['id']]);
       Response::error('Payment was not successful. Please try again.', 400);
     }
 
@@ -200,31 +205,18 @@ class BookingController
       Response::error('Payment amount does not match. Please contact support.', 400);
     }
 
-    // 7. Everything checks out — update booking to paid
+    // Mark booking as paid.
+    // The trg_booking_paid trigger fires here automatically and increments
+    // ticket_types.quantity_sold — no manual UPDATE needed.
     $this->db->prepare("
             UPDATE bookings
             SET payment_status = 'paid', paid_at = NOW()
             WHERE id = ?
         ")->execute([$booking['id']]);
 
-    // 8. Update ticket_types quantity_sold count
-    $this->db->prepare("
-            UPDATE ticket_types
-            SET quantity_sold = quantity_sold + ?
-            WHERE id = ?
-        ")->execute([$booking['quantity'], $booking['ticket_type_id']]);
-
-    // 9. Update events tickets_sold count
-    $this->db->prepare("
-            UPDATE events
-            SET tickets_sold = tickets_sold + ?
-            WHERE id = ?
-        ")->execute([$booking['quantity'], $booking['event_id']]);
-
-    // 10. Generate one ticket row per quantity purchased
-    //     If user bought 3 tickets, create 3 rows in tickets table
+    // Generate one ticket row per quantity purchased
     $tickets = [];
-    $stmt = $this->db->prepare("
+    $stmt    = $this->db->prepare("
             INSERT INTO tickets (booking_id, user_id, event_id, qr_token)
             VALUES (?, ?, ?, ?)
         ");
@@ -243,6 +235,19 @@ class BookingController
       ];
     }
 
+    // Queue ticket confirmation email
+    QueueService::sendTicketConfirmation(
+      $booking['user_email'],
+      $booking['user_name'],
+      $booking['event_title'],
+      $booking['event_start_date'],
+      $booking['event_location'],
+      $booking['ticket_type_name'],
+      (int) $booking['quantity'],
+      (float) $booking['total_amount'],
+      Environment::get('APP_URL') . '/dashboard'
+    );
+
     Response::success([
       'booking_id' => $booking['id'],
       'event'      => $booking['event_title'],
@@ -252,7 +257,7 @@ class BookingController
 
   // ============================================================
   // GET /api/bookings/mine
-  // Protected: attendee sees their own bookings
+  // FIX #6: Added deleted_at IS NULL filter
   // ============================================================
   public function myBookings(): void
   {
@@ -265,6 +270,7 @@ class BookingController
                 b.total_amount,
                 b.payment_status,
                 b.paid_at,
+                b.refunded_at,
                 b.created_at,
                 e.title      AS event_title,
                 e.location   AS event_location,
@@ -272,20 +278,20 @@ class BookingController
                 e.banner_image,
                 tt.name      AS ticket_type
             FROM bookings b
-            JOIN events      e  ON e.id  = b.event_id
+            JOIN events       e  ON e.id  = b.event_id
             JOIN ticket_types tt ON tt.id = b.ticket_type_id
             WHERE b.user_id = ?
+              AND b.deleted_at IS NULL
             ORDER BY b.created_at DESC
         ");
     $stmt->execute([$userId]);
-    $bookings = $stmt->fetchAll();
 
-    Response::success(['bookings' => $bookings]);
+    Response::success(['bookings' => $stmt->fetchAll()]);
   }
 
   // ============================================================
   // GET /api/bookings/:id
-  // Protected: owner of booking or organizer of event or dev
+  // FIX #6: Added deleted_at IS NULL check
   // ============================================================
   public function show(array $params): void
   {
@@ -308,6 +314,7 @@ class BookingController
             JOIN ticket_types tt ON tt.id = b.ticket_type_id
             JOIN users        u  ON u.id  = b.user_id
             WHERE b.id = ?
+              AND b.deleted_at IS NULL
         ");
     $stmt->execute([$bookingId]);
     $booking = $stmt->fetch();
@@ -329,7 +336,7 @@ class BookingController
     $stmt = $this->db->prepare("
             SELECT id, qr_token, is_used, used_at, created_at
             FROM tickets
-            WHERE booking_id = ?
+            WHERE booking_id = ? AND deleted_at IS NULL
         ");
     $stmt->execute([$bookingId]);
     $booking['tickets'] = $stmt->fetchAll();
@@ -339,7 +346,7 @@ class BookingController
 
   // ============================================================
   // GET /api/organizer/events/:id/bookings
-  // Protected: organizer sees all bookings for their event
+  // FIX #6: Added deleted_at IS NULL filter
   // ============================================================
   public function eventBookings(array $params): void
   {
@@ -367,18 +374,20 @@ class BookingController
                 b.total_amount,
                 b.payment_status,
                 b.paid_at,
+                b.refunded_at,
                 u.name  AS attendee_name,
                 u.email AS attendee_email,
                 tt.name AS ticket_type
             FROM bookings b
             JOIN users        u  ON u.id  = b.user_id
             JOIN ticket_types tt ON tt.id = b.ticket_type_id
-            WHERE b.event_id = ? AND b.payment_status = 'paid'
+            WHERE b.event_id = ?
+              AND b.payment_status = 'paid'
+              AND b.deleted_at IS NULL
             ORDER BY b.paid_at DESC
         ");
     $stmt->execute([$eventId]);
-    $bookings = $stmt->fetchAll();
 
-    Response::success(['bookings' => $bookings]);
+    Response::success(['bookings' => $stmt->fetchAll()]);
   }
 }
