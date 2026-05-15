@@ -36,12 +36,13 @@ class DevController
     // Full booking revenue
     $stmt = $this->db->prepare("
             SELECT
-                COUNT(*)                                                             AS total_bookings,
-                SUM(CASE WHEN payment_status = 'paid'    THEN total_amount ELSE 0 END) AS total_revenue,
-                SUM(CASE WHEN payment_status = 'pending' THEN 1 ELSE 0 END)            AS pending,
-                SUM(CASE WHEN payment_status = 'failed'  THEN 1 ELSE 0 END)            AS failed,
-                SUM(CASE WHEN payment_status = 'refunded'THEN 1 ELSE 0 END)            AS refunded
+                COUNT(*)                                                                AS total_bookings,
+                SUM(CASE WHEN payment_status = 'paid'     THEN total_amount ELSE 0 END) AS total_revenue,
+                SUM(CASE WHEN payment_status = 'pending'  THEN 1 ELSE 0 END)            AS pending,
+                SUM(CASE WHEN payment_status = 'failed'   THEN 1 ELSE 0 END)            AS failed,
+                SUM(CASE WHEN payment_status = 'refunded' THEN 1 ELSE 0 END)            AS refunded
             FROM bookings
+            WHERE deleted_at IS NULL
         ");
     $stmt->execute();
     $bookingStats = $stmt->fetch();
@@ -53,14 +54,15 @@ class DevController
                 SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END)        AS published,
                 SUM(CASE WHEN status = 'draft'     THEN 1 ELSE 0 END)        AS drafts,
                 SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END)        AS cancelled,
-                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)        AS completed
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END)        AS completed,
+                SUM(CASE WHEN status = 'deleted'   THEN 1 ELSE 0 END)        AS deleted
             FROM events
         ");
     $stmt->execute();
     $eventStats = $stmt->fetch();
 
     // Database health — row counts per table
-    $tables     = ['users', 'events', 'bookings', 'tickets', 'ticket_types', 'categories', 'dev_logs'];
+    $tables      = ['users', 'events', 'bookings', 'tickets', 'ticket_types', 'categories', 'dev_logs'];
     $tableCounts = [];
 
     foreach ($tables as $table) {
@@ -98,9 +100,8 @@ class DevController
             ORDER BY role ASC, created_at DESC
         ");
     $stmt->execute();
-    $users = $stmt->fetchAll();
 
-    Response::success(['users' => $users]);
+    Response::success(['users' => $stmt->fetchAll()]);
   }
 
   // ============================================================
@@ -125,12 +126,10 @@ class DevController
       $conditions[] = 'method = ?';
       $params[]     = $method;
     }
-
     if ($userId > 0) {
       $conditions[] = 'user_id = ?';
       $params[]     = $userId;
     }
-
     if ($respCode > 0) {
       $conditions[] = 'response_code = ?';
       $params[]     = $respCode;
@@ -163,10 +162,9 @@ class DevController
             LIMIT ? OFFSET ?
         ");
     $stmt->execute($params);
-    $logs = $stmt->fetchAll();
 
     Response::success([
-      'logs'       => $logs,
+      'logs'       => $stmt->fetchAll(),
       'pagination' => [
         'total'       => $total,
         'page'        => $page,
@@ -226,7 +224,6 @@ class DevController
   {
     $targetId = (int) $params['id'];
     $newRole  = trim($this->request->input('role', ''));
-
     $allRoles = [...Constants::PUBLIC_ROLES, Constants::ROLE_DEV];
 
     if (!in_array($newRole, $allRoles, true)) {
@@ -267,27 +264,36 @@ class DevController
             JOIN users  u ON u.id = b.user_id
             JOIN events e ON e.id = b.event_id
             WHERE b.payment_status IN ('failed', 'pending')
+              AND b.deleted_at IS NULL
             ORDER BY b.created_at DESC
         ");
     $stmt->execute();
-    $bookings = $stmt->fetchAll();
 
-    Response::success(['bookings' => $bookings]);
+    Response::success(['bookings' => $stmt->fetchAll()]);
   }
 
   // ============================================================
   // POST /api/dev/bookings/:id/force-pay
-  // Dev only — manually mark a booking as paid and issue tickets
-  // For fixing stuck payments during testing
+  //
+  // FIX #1: Removed the two manual UPDATE statements that were
+  // incrementing ticket_types.quantity_sold and events.tickets_sold.
+  // The trg_booking_paid trigger handles quantity_sold automatically
+  // when payment_status flips to 'paid'. events.tickets_sold no
+  // longer exists — use v_event_sales view instead.
   // ============================================================
   public function forcePay(array $params): void
   {
     $bookingId = (int) $params['id'];
 
     $stmt = $this->db->prepare("
-            SELECT b.*, e.title AS event_title
+            SELECT b.*, e.title AS event_title,
+                   u.name AS user_name, u.email AS user_email,
+                   tt.name AS ticket_type_name,
+                   e.location AS event_location, e.start_date AS event_start_date
             FROM bookings b
-            JOIN events e ON e.id = b.event_id
+            JOIN events       e  ON e.id  = b.event_id
+            JOIN users        u  ON u.id  = b.user_id
+            JOIN ticket_types tt ON tt.id = b.ticket_type_id
             WHERE b.id = ?
         ");
     $stmt->execute([$bookingId]);
@@ -301,19 +307,10 @@ class DevController
       Response::error('This booking is already paid.', 400);
     }
 
-    // Mark as paid
+    // Flip to paid — trg_booking_paid fires here and increments quantity_sold
     $this->db->prepare("
             UPDATE bookings SET payment_status = 'paid', paid_at = NOW() WHERE id = ?
         ")->execute([$bookingId]);
-
-    // Update counts
-    $this->db->prepare("
-            UPDATE ticket_types SET quantity_sold = quantity_sold + ? WHERE id = ?
-        ")->execute([$booking['quantity'], $booking['ticket_type_id']]);
-
-    $this->db->prepare("
-            UPDATE events SET tickets_sold = tickets_sold + ? WHERE id = ?
-        ")->execute([$booking['quantity'], $booking['event_id']]);
 
     // Issue tickets
     $tickets = [];
