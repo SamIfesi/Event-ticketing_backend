@@ -13,9 +13,10 @@ class EventController
 
   // ============================================================
   // GET /api/events
-  // Public — anyone can see published events
-  // Supports filtering by: category, search, date
-  // Supports pagination: ?page=1&limit=12
+  //
+  // FIX #3: Replaced e.tickets_sold (removed column) with a
+  // LEFT JOIN on v_event_sales for live accurate counts.
+  // Also excludes soft-deleted events.
   // ============================================================
   public function index(): void
   {
@@ -26,9 +27,9 @@ class EventController
     $search     = trim($this->request->query('search', ''));
     $categoryId = $this->request->query('category', '');
     $dateFilter = $this->request->query('date', ''); // 'upcoming' | 'past' | ''
-
+    
     // Build query dynamically based on filters
-    $conditions = ["e.status = 'published'"];
+    $conditions = ["e.status = 'published'", "e.deleted_at IS NULL"];
     $params     = [];
 
     if (!empty($search)) {
@@ -71,36 +72,38 @@ class EventController
                 e.start_date,
                 e.end_date,
                 e.total_tickets,
-                e.tickets_sold,
                 e.status,
                 e.created_at,
+                COALESCE(s.tickets_sold, 0)      AS tickets_sold,
+                COALESCE(s.tickets_available, 0)  AS tickets_available,
                 u.name  AS organizer_name,
                 c.name  AS category_name,
                 c.icon  AS category_icon
             FROM events e
             JOIN users       u ON u.id = e.organizer_id
-            LEFT JOIN categories c ON c.id = e.category_id
+            LEFT JOIN categories  c ON c.id    = e.category_id
+            LEFT JOIN v_event_sales s ON s.event_id = e.id
             WHERE {$where}
             ORDER BY e.start_date ASC
             LIMIT ? OFFSET ?
         ");
     $stmt->execute($params);
-    $events = $stmt->fetchAll();
 
     Response::success([
-      'events'      => $events,
-      'pagination'  => [
-        'total'        => $total,
-        'page'         => $page,
-        'limit'        => $limit,
-        'total_pages'  => (int) ceil($total / $limit),
+      'events'     => $stmt->fetchAll(),
+      'pagination' => [
+        'total'       => $total,
+        'page'        => $page,
+        'limit'       => $limit,
+        'total_pages' => (int) ceil($total / $limit),
       ],
     ]);
   }
 
   // ============================================================
   // GET /api/events/:id
-  // Public — get a single event by ID
+  //
+  // FIX #3: Replaced e.tickets_sold with v_event_sales join.
   // ============================================================
   public function show(array $params): void
   {
@@ -117,17 +120,22 @@ class EventController
                 e.start_date,
                 e.end_date,
                 e.total_tickets,
-                e.tickets_sold,
                 e.status,
                 e.created_at,
+                COALESCE(s.tickets_sold, 0)      AS tickets_sold,
+                COALESCE(s.tickets_available, 0)  AS tickets_available,
+                COALESCE(s.total_revenue, 0)      AS total_revenue,
                 u.id    AS organizer_id,
                 u.name  AS organizer_name,
                 c.name  AS category_name,
                 c.icon  AS category_icon
             FROM events e
             JOIN users       u ON u.id = e.organizer_id
-            LEFT JOIN categories c ON c.id = e.category_id
-            WHERE e.id = ? AND e.status = 'published'
+            LEFT JOIN categories  c ON c.id    = e.category_id
+            LEFT JOIN v_event_sales s ON s.event_id = e.id
+            WHERE e.id = ?
+              AND e.status = 'published'
+              AND e.deleted_at IS NULL
         ");
     $stmt->execute([$eventId]);
     $event = $stmt->fetch();
@@ -162,29 +170,23 @@ class EventController
   // ============================================================
   public function store(): void
   {
-    $input = $this->request->body;
-
-    // Validate required fields
+    $input  = $this->request->body;
     $errors = [];
 
     if (empty($input['title'])) {
       $errors['title'] = 'Event title is required.';
     }
-
     if (empty($input['start_date'])) {
       $errors['start_date'] = 'Start date is required.';
     }
-
     if (empty($input['end_date'])) {
       $errors['end_date'] = 'End date is required.';
     }
-
     if (!empty($input['start_date']) && !empty($input['end_date'])) {
       if (strtotime($input['end_date']) <= strtotime($input['start_date'])) {
         $errors['end_date'] = 'End date must be after start date.';
       }
     }
-
     if (!isset($input['total_tickets']) || (int) $input['total_tickets'] < 1) {
       $errors['total_tickets'] = 'Total tickets must be at least 1.';
     }
@@ -213,16 +215,16 @@ class EventController
 
     $stmt->execute([
       $this->request->user['id'],
-      $input['category_id']   ?? null,
+      $input['category_id']  ?? null,
       trim($input['title']),
       $slug,
-      $input['description']   ?? null,
-      $input['location']      ?? null,
-      $input['banner_image']  ?? null,
+      $input['description']  ?? null,
+      $input['location']     ?? null,
+      $input['banner_image'] ?? null,
       $input['start_date'],
       $input['end_date'],
       (int) $input['total_tickets'],
-      $input['status']        ?? Constants::EVENT_DRAFT,
+      $input['status']       ?? Constants::EVENT_DRAFT,
     ]);
 
     $eventId = $this->db->lastInsertId();
@@ -235,9 +237,8 @@ class EventController
     // Fetch and return the newly created event
     $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ?');
     $stmt->execute([$eventId]);
-    $event = $stmt->fetch();
 
-    Response::success(['event' => $event], 'Event created successfully.', 201);
+    Response::success(['event' => $stmt->fetch()], 'Event created successfully.', 201);
   }
 
   // ============================================================
@@ -250,8 +251,7 @@ class EventController
     $userId  = $this->request->user['id'];
     $role    = $this->request->user['role'];
 
-    // Find the event
-    $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ?');
+    $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ? AND deleted_at IS NULL');
     $stmt->execute([$eventId]);
     $event = $stmt->fetch();
 
@@ -305,14 +305,22 @@ class EventController
     // Return updated event
     $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ?');
     $stmt->execute([$eventId]);
-    $updated = $stmt->fetch();
 
-    Response::success(['event' => $updated], 'Event updated successfully.');
+    Response::success(['event' => $stmt->fetch()], 'Event updated successfully.');
   }
 
   // ============================================================
   // DELETE /api/events/:id
   // Protected: organizer (own events) or admin or dev
+  //
+  // FIX #4: Clarified intent — this is a CANCELLATION, not a
+  // deletion. Status is set to 'cancelled'. The event remains
+  // visible to the organizer in their dashboard. Tickets and
+  // bookings are preserved.
+  //
+  // To fully soft-delete (hide from organizer dashboard too),
+  // admin uses PUT /api/admin/events/:id/status with 'deleted'.
+  // That stamps deleted_at and triggers the activity_log entry.
   // ============================================================
   public function destroy(array $params): void
   {
@@ -320,7 +328,7 @@ class EventController
     $userId  = $this->request->user['id'];
     $role    = $this->request->user['role'];
 
-    $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ?');
+    $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ? AND deleted_at IS NULL');
     $stmt->execute([$eventId]);
     $event = $stmt->fetch();
 
@@ -330,21 +338,22 @@ class EventController
 
     // Organizers can only delete their own events
     if ($role === Constants::ROLE_ORGANIZER && (int) $event['organizer_id'] !== $userId) {
-      Response::forbidden('You can only delete your own events.');
+      Response::forbidden('You can only cancel your own events.');
     }
 
     // Instead of hard deleting, mark as cancelled
     // This preserves booking history for users who already bought tickets
-    $stmt = $this->db->prepare("UPDATE events SET status = 'cancelled' WHERE id = ?");
-    $stmt->execute([$eventId]);
+    $this->db->prepare("UPDATE events SET status = 'cancelled' WHERE id = ?")
+      ->execute([$eventId]);
 
-    Response::success(null, 'Event cancelled successfully.');
+    Response::success(null, 'Event cancelled successfully. All existing bookings and tickets are preserved.');
   }
 
   // ============================================================
   // GET /api/organizer/events
-  // Protected: organizer sees only their own events
-  // Dev sees all events regardless of status
+  //
+  // FIX #3: Replaced e.tickets_sold with v_event_sales join.
+  // FIX: Excludes soft-deleted events from organizer view.
   // ============================================================
   public function myEvents(): void
   {
@@ -354,33 +363,44 @@ class EventController
     if ($role === Constants::ROLE_DEV) {
       // Dev sees every event on the platform
       $stmt = $this->db->prepare("
-                SELECT e.*, u.name AS organizer_name, c.name AS category_name
+                SELECT
+                    e.*,
+                    COALESCE(s.tickets_sold, 0)      AS tickets_sold,
+                    COALESCE(s.tickets_available, 0)  AS tickets_available,
+                    COALESCE(s.total_revenue, 0)      AS total_revenue,
+                    u.name AS organizer_name,
+                    c.name AS category_name
                 FROM events e
                 JOIN users u ON u.id = e.organizer_id
-                LEFT JOIN categories c ON c.id = e.category_id
+                LEFT JOIN categories  c ON c.id    = e.category_id
+                LEFT JOIN v_event_sales s ON s.event_id = e.id
                 ORDER BY e.created_at DESC
             ");
       $stmt->execute();
     } else {
-      // Organizer sees only their own events
       $stmt = $this->db->prepare("
-                SELECT e.*, c.name AS category_name
+                SELECT
+                    e.*,
+                    COALESCE(s.tickets_sold, 0)      AS tickets_sold,
+                    COALESCE(s.tickets_available, 0)  AS tickets_available,
+                    COALESCE(s.total_revenue, 0)      AS total_revenue,
+                    c.name AS category_name
                 FROM events e
-                LEFT JOIN categories c ON c.id = e.category_id
+                LEFT JOIN categories  c ON c.id    = e.category_id
+                LEFT JOIN v_event_sales s ON s.event_id = e.id
                 WHERE e.organizer_id = ?
+                  AND e.deleted_at IS NULL
                 ORDER BY e.created_at DESC
             ");
       $stmt->execute([$userId]);
     }
 
-    $events = $stmt->fetchAll();
-
-    Response::success(['events' => $events]);
+    Response::success(['events' => $stmt->fetchAll()]);
   }
 
-    // ============================================================
-    // PRIVATE HELPERS
-    // ============================================================
+  // ============================================================
+  // PRIVATE HELPERS
+  // ============================================================
 
   /**
    * Convert an event title to a URL-friendly slug
@@ -389,10 +409,9 @@ class EventController
   private function generateSlug(string $title): string
   {
     $slug = strtolower(trim($title));
-    $slug = preg_replace('/[^a-z0-9\s-]/', '', $slug);  // remove special chars
-    $slug = preg_replace('/[\s-]+/', '-', $slug);         // spaces to hyphens
-    $slug = trim($slug, '-');
-    return $slug;
+    $slug = preg_replace('/[^a-z0-9\s-]/', '', $slug);
+    $slug = preg_replace('/[\s-]+/', '-', $slug);
+    return trim($slug, '-');
   }
 
   /**
@@ -409,7 +428,6 @@ class EventController
       if (empty($type['name']) || !isset($type['price']) || empty($type['quantity'])) {
         continue; // skip incomplete ticket types
       }
-
       $stmt->execute([
         $eventId,
         trim($type['name']),
