@@ -14,7 +14,6 @@ class CategoryController
   // ============================================================
   // GET /api/categories
   // Public — anyone can see categories
-  // Used by React to populate the filter dropdown on events page
   // ============================================================
   public function index(): void
   {
@@ -29,24 +28,26 @@ class CategoryController
             LEFT JOIN events e
                 ON e.category_id = c.id
                 AND e.status = 'published'
+                AND e.deleted_at IS NULL
             GROUP BY c.id, c.name, c.slug, c.icon
             ORDER BY c.name ASC
         ");
     $stmt->execute();
-    $categories = $stmt->fetchAll();
 
-    Response::success(['categories' => $categories]);
+    Response::success(['categories' => $stmt->fetchAll()]);
   }
 
   // ============================================================
   // GET /api/categories/:id
-  // Public — get a single category + its published events
+  //
+  // FIX #3: Replaced e.tickets_sold (removed column) with a
+  // LEFT JOIN on v_event_sales for live accurate counts.
+  // Also filters soft-deleted events.
   // ============================================================
   public function show(array $params): void
   {
     $categoryId = (int) $params['id'];
 
-    // Fetch the category
     $stmt = $this->db->prepare("
             SELECT id, name, slug, icon FROM categories WHERE id = ?
         ");
@@ -57,7 +58,6 @@ class CategoryController
       Response::notFound('Category not found.');
     }
 
-    // Fetch published events under this category
     $stmt = $this->db->prepare("
             SELECT
                 e.id,
@@ -67,11 +67,15 @@ class CategoryController
                 e.banner_image,
                 e.start_date,
                 e.total_tickets,
-                e.tickets_sold,
+                COALESCE(s.tickets_sold, 0)      AS tickets_sold,
+                COALESCE(s.tickets_available, 0)  AS tickets_available,
                 u.name AS organizer_name
             FROM events e
             JOIN users u ON u.id = e.organizer_id
-            WHERE e.category_id = ? AND e.status = 'published'
+            LEFT JOIN v_event_sales s ON s.event_id = e.id
+            WHERE e.category_id = ?
+              AND e.status = 'published'
+              AND e.deleted_at IS NULL
             ORDER BY e.start_date ASC
         ");
     $stmt->execute([$categoryId]);
@@ -110,18 +114,15 @@ class CategoryController
       Response::error('A category with this name already exists.', 409);
     }
 
-    $stmt = $this->db->prepare("
-            INSERT INTO categories (name, slug, icon) VALUES (?, ?, ?)
-        ");
-    $stmt->execute([$name, $slug, $icon]);
+    $this->db->prepare("INSERT INTO categories (name, slug, icon) VALUES (?, ?, ?)")
+      ->execute([$name, $slug, $icon]);
 
     $categoryId = $this->db->lastInsertId();
 
     $stmt = $this->db->prepare('SELECT * FROM categories WHERE id = ?');
     $stmt->execute([$categoryId]);
-    $category = $stmt->fetch();
 
-    Response::success(['category' => $category], 'Category created successfully.', 201);
+    Response::success(['category' => $stmt->fetch()], 'Category created successfully.', 201);
   }
 
   // ============================================================
@@ -143,19 +144,17 @@ class CategoryController
     $name = trim($this->request->input('name', ''));
     $icon = trim($this->request->input('icon', ''));
 
-    $stmt = $this->db->prepare("
+    $this->db->prepare("
             UPDATE categories SET
                 name = COALESCE(NULLIF(?, ''), name),
                 icon = COALESCE(NULLIF(?, ''), icon)
             WHERE id = ?
-        ");
-    $stmt->execute([$name, $icon, $categoryId]);
+        ")->execute([$name, $icon, $categoryId]);
 
     $stmt = $this->db->prepare('SELECT * FROM categories WHERE id = ?');
     $stmt->execute([$categoryId]);
-    $updated = $stmt->fetch();
 
-    Response::success(['category' => $updated], 'Category updated successfully.');
+    Response::success(['category' => $stmt->fetch()], 'Category updated successfully.');
   }
 
   // ============================================================
@@ -175,9 +174,7 @@ class CategoryController
     }
 
     // Check if any events use this category
-    $stmt = $this->db->prepare("
-            SELECT COUNT(*) FROM events WHERE category_id = ?
-        ");
+    $stmt = $this->db->prepare("SELECT COUNT(*) FROM events WHERE category_id = ?");
     $stmt->execute([$categoryId]);
     $eventCount = (int) $stmt->fetchColumn();
 
