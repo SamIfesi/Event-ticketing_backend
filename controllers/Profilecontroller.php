@@ -13,8 +13,10 @@ class ProfileController
 
   // ============================================================
   // GET /api/profile
-  // Protected: logged in
-  // Full profile with stats and summary
+  //
+  // FIX #3: organizer_stats no longer reads events.tickets_sold.
+  // Uses v_event_sales view for accurate live totals.
+  // FIX #6: booking_stats filters deleted_at IS NULL.
   // ============================================================
   public function show(): void
   {
@@ -32,29 +34,33 @@ class ProfileController
       Response::notFound('User not found.');
     }
 
-    // Booking stats
+    // Booking stats — exclude soft-deleted bookings
     $stmt = $this->db->prepare("
             SELECT
-                COUNT(*)                                                              AS total_bookings,
-                SUM(CASE WHEN payment_status = 'paid'    THEN 1    ELSE 0 END)       AS paid_bookings,
-                SUM(CASE WHEN payment_status = 'pending' THEN 1    ELSE 0 END)       AS pending_bookings,
+                COUNT(*)                                                                AS total_bookings,
+                SUM(CASE WHEN payment_status = 'paid'    THEN 1    ELSE 0 END)         AS paid_bookings,
+                SUM(CASE WHEN payment_status = 'pending' THEN 1    ELSE 0 END)         AS pending_bookings,
                 SUM(CASE WHEN payment_status = 'paid'    THEN total_amount ELSE 0 END) AS total_spent
-            FROM bookings WHERE user_id = ?
+            FROM bookings
+            WHERE user_id = ?
+              AND deleted_at IS NULL
         ");
     $stmt->execute([$userId]);
     $user['booking_stats'] = $stmt->fetch();
 
-    // Ticket stats
+    // Ticket stats — exclude soft-deleted tickets
     $stmt = $this->db->prepare("
             SELECT
                 COUNT(*)                                       AS total_tickets,
                 SUM(CASE WHEN is_used = 1 THEN 1 ELSE 0 END)  AS used_tickets
-            FROM tickets WHERE user_id = ?
+            FROM tickets
+            WHERE user_id = ?
+              AND deleted_at IS NULL
         ");
     $stmt->execute([$userId]);
     $user['ticket_stats'] = $stmt->fetch();
 
-    // Upcoming events (tickets for future events)
+    // Upcoming events
     $stmt = $this->db->prepare("
             SELECT DISTINCT
                 e.id,
@@ -69,7 +75,10 @@ class ProfileController
             JOIN ticket_types tt ON tt.id = b.ticket_type_id
             WHERE t.user_id = ?
               AND e.start_date > NOW()
+              AND e.deleted_at IS NULL
               AND b.payment_status = 'paid'
+              AND b.deleted_at IS NULL
+              AND t.deleted_at IS NULL
             ORDER BY e.start_date ASC
             LIMIT 5
         ");
@@ -77,16 +86,21 @@ class ProfileController
     $user['upcoming_events'] = $stmt->fetchAll();
 
     // Organizer-only stats
+    // FIX #3: Replaced SUM(tickets_sold) with v_event_sales join
     if (in_array($role, [Constants::ROLE_ORGANIZER, Constants::ROLE_DEV])) {
       $stmt = $this->db->prepare("
                 SELECT
-                    COUNT(*)                                               AS total_events,
-                    SUM(tickets_sold)                                      AS total_tickets_sold,
-                    SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS live_events,
-                    SUM(CASE WHEN start_date > NOW()
-                             AND status = 'published'
-                             THEN 1 ELSE 0 END)                            AS upcoming_events
-                FROM events WHERE organizer_id = ?
+                    COUNT(e.id)                                                         AS total_events,
+                    COALESCE(SUM(s.tickets_sold), 0)                                   AS total_tickets_sold,
+                    COALESCE(SUM(s.total_revenue), 0)                                  AS total_revenue,
+                    SUM(CASE WHEN e.status = 'published' THEN 1 ELSE 0 END)            AS live_events,
+                    SUM(CASE WHEN e.start_date > NOW()
+                             AND e.status = 'published'
+                             THEN 1 ELSE 0 END)                                        AS upcoming_events
+                FROM events e
+                LEFT JOIN v_event_sales s ON s.event_id = e.id
+                WHERE e.organizer_id = ?
+                  AND e.deleted_at IS NULL
             ");
       $stmt->execute([$userId]);
       $user['organizer_stats'] = $stmt->fetch();
@@ -105,7 +119,6 @@ class ProfileController
     $userId = $this->request->user['id'];
     $name   = trim($this->request->input('name', ''));
     $avatar = trim($this->request->input('avatar', ''));
-
     $errors = [];
 
     if (!empty($name) && strlen($name) < 2) {
@@ -181,9 +194,8 @@ class ProfileController
       Response::error('New password must be different from your current password.', 400);
     }
 
-    // Hash and save
-    $newHash = password_hash($newPassword, PASSWORD_BCRYPT);
-    $this->db->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([$newHash, $userId]);
+    $this->db->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+      ->execute([password_hash($newPassword, PASSWORD_BCRYPT), $userId]);
 
     // Queue the notification email instead of sending directly
     QueueService::sendPasswordChanged($user['email'], $user['name']);
@@ -195,8 +207,7 @@ class ProfileController
 
   // ============================================================
   // POST /api/profile/change-email
-  // Protected: logged in
-  // Step 1 — request email change, sends OTP to NEW email
+  // Step 1 — sends OTP to new email
   // ============================================================
   public function requestEmailChange(): void
   {
@@ -247,8 +258,7 @@ class ProfileController
 
   // ============================================================
   // POST /api/profile/confirm-email-change
-  // Protected: logged in
-  // Step 2 — verify OTP and update email
+  // Step 2 — verifies OTP and updates email
   // ============================================================
   public function confirmEmailChange(): void
   {
@@ -284,11 +294,10 @@ class ProfileController
     $this->db->prepare("UPDATE email_verifications SET is_used = 1 WHERE id = ?")
       ->execute([$record['id']]);
 
-    // Update email — also mark as verified since they just proved they own it
     $this->db->prepare("
             UPDATE users SET
-                email            = ?,
-                email_verified   = 1,
+                email             = ?,
+                email_verified    = 1,
                 email_verified_at = NOW()
             WHERE id = ?
         ")->execute([$record['email'], $userId]);
@@ -300,15 +309,15 @@ class ProfileController
 
   // ============================================================
   // GET /api/profile/bookings
-  // Protected: logged in
-  // User's full booking history with ticket details
+  //
+  // FIX #6: Added deleted_at IS NULL filter on bookings.
   // ============================================================
   public function bookings(): void
   {
     $userId = $this->request->user['id'];
-    $status = $this->request->query('status', ''); // filter by payment_status
+    $status = $this->request->query('status', '');
 
-    $conditions = ['b.user_id = ?'];
+    $conditions = ['b.user_id = ?', 'b.deleted_at IS NULL'];
     $params     = [$userId];
 
     if (!empty($status)) {
@@ -325,6 +334,7 @@ class ProfileController
                 b.total_amount,
                 b.payment_status,
                 b.paid_at,
+                b.refunded_at,
                 b.created_at,
                 e.title       AS event_title,
                 e.location    AS event_location,
@@ -335,9 +345,10 @@ class ProfileController
             FROM bookings b
             JOIN events       e  ON e.id  = b.event_id
             JOIN ticket_types tt ON tt.id = b.ticket_type_id
-            LEFT JOIN tickets  t  ON t.booking_id = b.id
+            LEFT JOIN tickets  t  ON t.booking_id = b.id AND t.deleted_at IS NULL
             WHERE {$where}
-            GROUP BY b.id, e.title, e.location, e.start_date, e.banner_image, tt.name
+            GROUP BY b.id, e.title, e.location, e.start_date, e.banner_image, tt.name,
+                     b.quantity, b.total_amount, b.payment_status, b.paid_at, b.refunded_at, b.created_at
             ORDER BY b.created_at DESC
         ");
     $stmt->execute($params);
@@ -347,16 +358,23 @@ class ProfileController
 
   // ============================================================
   // GET /api/profile/tickets
-  // Protected: logged in
-  // All tickets the user owns
+  //
+  // FIX #6: Added deleted_at IS NULL on tickets and bookings.
+  // Also excludes tickets for soft-deleted events.
   // ============================================================
   public function tickets(): void
   {
     $userId = $this->request->user['id'];
-    $filter = $this->request->query('filter', ''); // 'upcoming' | 'past' | ''
+    $filter = $this->request->query('filter', '');
 
-    $conditions = ['t.user_id = ?', "b.payment_status = 'paid'"];
-    $params     = [$userId];
+    $conditions = [
+      't.user_id = ?',
+      "b.payment_status = 'paid'",
+      'b.deleted_at IS NULL',
+      't.deleted_at IS NULL',
+      'e.deleted_at IS NULL',
+    ];
+    $params = [$userId];
 
     if ($filter === 'upcoming') {
       $conditions[] = 'e.start_date > NOW()';
