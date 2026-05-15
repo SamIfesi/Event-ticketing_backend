@@ -13,8 +13,6 @@ class AdminController
 
   // ============================================================
   // GET /api/admin/users
-  // Protected: admin or dev
-  // Returns all users EXCEPT dev accounts
   // ============================================================
   public function users(): void
   {
@@ -24,8 +22,6 @@ class AdminController
     $search = trim($this->request->query('search', ''));
     $role   = trim($this->request->query('role', ''));
 
-    // Build filters
-    // CRITICAL: always exclude dev accounts from admin view
     $conditions = ["role != 'dev'"];
     $params     = [];
 
@@ -35,7 +31,6 @@ class AdminController
       $params[]     = "%{$search}%";
     }
 
-    // Admin can filter by role but dev is always excluded
     if (!empty($role) && in_array($role, Constants::PUBLIC_ROLES, true)) {
       $conditions[] = 'role = ?';
       $params[]     = $role;
@@ -43,7 +38,6 @@ class AdminController
 
     $where = implode(' AND ', $conditions);
 
-    // Total count for pagination
     $countStmt = $this->db->prepare("SELECT COUNT(*) FROM users WHERE {$where}");
     $countStmt->execute($params);
     $total = (int) $countStmt->fetchColumn();
@@ -66,10 +60,9 @@ class AdminController
             LIMIT ? OFFSET ?
         ");
     $stmt->execute($params);
-    $users = $stmt->fetchAll();
 
     Response::success([
-      'users'      => $users,
+      'users'      => $stmt->fetchAll(),
       'pagination' => [
         'total'       => $total,
         'page'        => $page,
@@ -81,14 +74,14 @@ class AdminController
 
   // ============================================================
   // GET /api/admin/users/:id
-  // Protected: admin or dev
-  // Returns a single user's profile + their activity summary
+  //
+  // FIX #2: organizer_summary no longer reads events.tickets_sold.
+  // Uses v_event_sales view to get accurate live totals.
   // ============================================================
   public function showUser(array $params): void
   {
     $userId = (int) $params['id'];
 
-    // Block looking up dev accounts
     $stmt = $this->db->prepare("
             SELECT id, name, email, role, is_active, avatar, created_at
             FROM users
@@ -101,27 +94,29 @@ class AdminController
       Response::notFound('User not found.');
     }
 
-    // Attach booking summary
+    // Booking summary
     $stmt = $this->db->prepare("
             SELECT
                 COUNT(*)                                      AS total_bookings,
                 SUM(total_amount)                             AS total_spent,
                 SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) AS paid_bookings
             FROM bookings
-            WHERE user_id = ?
+            WHERE user_id = ? AND deleted_at IS NULL
         ");
     $stmt->execute([$userId]);
     $user['booking_summary'] = $stmt->fetch();
 
-    // If organizer, attach their event summary
+    // Organizer summary — join v_event_sales for accurate ticket counts
     if ($user['role'] === Constants::ROLE_ORGANIZER) {
       $stmt = $this->db->prepare("
                 SELECT
-                    COUNT(*)                                               AS total_events,
-                    SUM(tickets_sold)                                      AS total_tickets_sold,
-                    SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS live_events
-                FROM events
-                WHERE organizer_id = ?
+                    COUNT(e.id)                                                        AS total_events,
+                    COALESCE(SUM(s.tickets_sold), 0)                                   AS total_tickets_sold,
+                    SUM(CASE WHEN e.status = 'published' THEN 1 ELSE 0 END)            AS live_events
+                FROM events e
+                LEFT JOIN v_event_sales s ON s.event_id = e.id
+                WHERE e.organizer_id = ?
+                  AND e.deleted_at IS NULL
             ");
       $stmt->execute([$userId]);
       $user['organizer_summary'] = $stmt->fetch();
@@ -132,22 +127,18 @@ class AdminController
 
   // ============================================================
   // PUT /api/admin/users/:id/role
-  // Protected: admin or dev
-  // Change a user's role — dev role cannot be assigned here
   // ============================================================
   public function updateRole(array $params): void
   {
     $targetId = (int) $params['id'];
     $newRole  = trim($this->request->input('role', ''));
 
-    // Validate role — dev role can never be assigned through this endpoint
     if (!in_array($newRole, Constants::PUBLIC_ROLES, true)) {
       Response::validationError([
         'role' => 'Invalid role. Must be one of: ' . implode(', ', Constants::PUBLIC_ROLES),
       ]);
     }
 
-    // Find the target user — block if they're a dev account
     $stmt = $this->db->prepare("SELECT id, role FROM users WHERE id = ? AND role != 'dev'");
     $stmt->execute([$targetId]);
     $user = $stmt->fetch();
@@ -156,7 +147,6 @@ class AdminController
       Response::notFound('User not found.');
     }
 
-    // Admin cannot change their own role
     if ($targetId === (int) $this->request->user['id']) {
       Response::error('You cannot change your own role.', 400);
     }
@@ -168,15 +158,12 @@ class AdminController
 
   // ============================================================
   // PUT /api/admin/users/:id/status
-  // Protected: admin or dev
-  // Activate or deactivate a user account
   // ============================================================
   public function updateStatus(array $params): void
   {
     $targetId = (int) $params['id'];
     $isActive = (int) $this->request->input('is_active', 1);
 
-    // Block acting on dev accounts
     $stmt = $this->db->prepare("SELECT id FROM users WHERE id = ? AND role != 'dev'");
     $stmt->execute([$targetId]);
 
@@ -184,28 +171,29 @@ class AdminController
       Response::notFound('User not found.');
     }
 
-    // Admin cannot deactivate themselves
     if ($targetId === (int) $this->request->user['id']) {
       Response::error('You cannot deactivate your own account.', 400);
     }
 
     $this->db->prepare("UPDATE users SET is_active = ? WHERE id = ?")->execute([$isActive ? 1 : 0, $targetId]);
 
-    $message = $isActive ? 'User account activated.' : 'User account deactivated.';
-    Response::success(null, $message);
+    Response::success(null, $isActive ? 'User account activated.' : 'User account deactivated.');
   }
 
   // ============================================================
   // GET /api/admin/events
-  // Protected: admin or dev
-  // Admin can see and manage ALL events on the platform
+  //
+  // FIX #3: Replaced e.tickets_sold column (removed in v2 schema)
+  // with a LEFT JOIN on v_event_sales to get live accurate counts.
+  // Also filters out soft-deleted events by default.
   // ============================================================
   public function events(): void
   {
-    $page   = max(1, (int) $this->request->query('page', '1'));
-    $limit  = min(50, max(1, (int) $this->request->query('limit', '20')));
-    $offset = ($page - 1) * $limit;
-    $status = trim($this->request->query('status', ''));
+    $page          = max(1, (int) $this->request->query('page', '1'));
+    $limit         = min(50, max(1, (int) $this->request->query('limit', '20')));
+    $offset        = ($page - 1) * $limit;
+    $status        = trim($this->request->query('status', ''));
+    $showDeleted   = $this->request->query('show_deleted', '0') === '1';
 
     $conditions = ['1=1'];
     $params     = [];
@@ -213,6 +201,11 @@ class AdminController
     if (!empty($status)) {
       $conditions[] = 'e.status = ?';
       $params[]     = $status;
+    }
+
+    // Hide soft-deleted events unless admin explicitly requests them
+    if (!$showDeleted) {
+      $conditions[] = 'e.deleted_at IS NULL';
     }
 
     $where = implode(' AND ', $conditions);
@@ -231,23 +224,26 @@ class AdminController
                 e.status,
                 e.start_date,
                 e.total_tickets,
-                e.tickets_sold,
+                e.deleted_at,
+                COALESCE(s.tickets_sold, 0)     AS tickets_sold,
+                COALESCE(s.tickets_available, 0) AS tickets_available,
+                COALESCE(s.total_revenue, 0)     AS total_revenue,
                 e.created_at,
                 u.name  AS organizer_name,
                 u.email AS organizer_email,
                 c.name  AS category_name
             FROM events e
             JOIN users u ON u.id = e.organizer_id
-            LEFT JOIN categories c ON c.id = e.category_id
+            LEFT JOIN categories c     ON c.id    = e.category_id
+            LEFT JOIN v_event_sales s  ON s.event_id = e.id
             WHERE {$where}
             ORDER BY e.created_at DESC
             LIMIT ? OFFSET ?
         ");
     $stmt->execute($params);
-    $events = $stmt->fetchAll();
 
     Response::success([
-      'events'     => $events,
+      'events'     => $stmt->fetchAll(),
       'pagination' => [
         'total'       => $total,
         'page'        => $page,
@@ -259,8 +255,10 @@ class AdminController
 
   // ============================================================
   // PUT /api/admin/events/:id/status
-  // Protected: admin or dev
-  // Admin can force-change any event's status
+  //
+  // FIX #5: Added EVENT_DELETED to valid statuses.
+  // When admin sets status to 'deleted', also stamps deleted_at
+  // so the soft-delete trigger fires and logs to activity_logs.
   // ============================================================
   public function updateEventStatus(array $params): void
   {
@@ -272,6 +270,7 @@ class AdminController
       Constants::EVENT_PUBLISHED,
       Constants::EVENT_CANCELLED,
       Constants::EVENT_COMPLETED,
+      Constants::EVENT_DELETED,   // FIX #5
     ];
 
     if (!in_array($newStatus, $validStatuses, true)) {
@@ -285,40 +284,54 @@ class AdminController
       Response::notFound('Event not found.');
     }
 
-    $this->db->prepare("UPDATE events SET status = ? WHERE id = ?")->execute([$newStatus, $eventId]);
+    if ($newStatus === Constants::EVENT_DELETED) {
+      // Stamp deleted_at so the trigger logs it to activity_logs
+      $this->db->prepare("
+                UPDATE events SET status = 'deleted', deleted_at = NOW() WHERE id = ?
+            ")->execute([$eventId]);
+    } else {
+      // For any other status change, clear deleted_at in case it was previously deleted
+      $this->db->prepare("
+                UPDATE events SET status = ?, deleted_at = NULL WHERE id = ?
+            ")->execute([$newStatus, $eventId]);
+    }
 
     Response::success(null, "Event status updated to '{$newStatus}'.");
   }
 
   // ============================================================
   // GET /api/admin/stats
-  // Protected: admin or dev
-  // Platform-wide statistics for the admin dashboard
+  //
+  // FIX #3: Removed SUM(tickets_sold) from events query.
+  // Ticket counts now come from bookings directly (already correct here).
+  // Added deleted event count.
+  // FIX #6: bookings stats filter deleted_at IS NULL.
   // ============================================================
   public function stats(): void
   {
-    // Users — always exclude dev accounts from counts
+    // Users
     $stmt = $this->db->prepare("
             SELECT
-                COUNT(*)                                                        AS total_users,
-                SUM(CASE WHEN role = 'attendee'  THEN 1 ELSE 0 END)            AS attendees,
-                SUM(CASE WHEN role = 'organizer' THEN 1 ELSE 0 END)            AS organizers,
-                SUM(CASE WHEN role = 'admin'     THEN 1 ELSE 0 END)            AS admins,
+                COUNT(*)                                                                AS total_users,
+                SUM(CASE WHEN role = 'attendee'  THEN 1 ELSE 0 END)                   AS attendees,
+                SUM(CASE WHEN role = 'organizer' THEN 1 ELSE 0 END)                   AS organizers,
+                SUM(CASE WHEN role = 'admin'     THEN 1 ELSE 0 END)                   AS admins,
                 SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                          AND role != 'dev' THEN 1 ELSE 0 END)                 AS new_this_month
+                          AND role != 'dev' THEN 1 ELSE 0 END)                        AS new_this_month
             FROM users
             WHERE role != 'dev'
         ");
     $stmt->execute();
     $userStats = $stmt->fetch();
 
-    // Events
+    // Events — includes deleted count for admin awareness
     $stmt = $this->db->prepare("
             SELECT
                 COUNT(*)                                                              AS total_events,
                 SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END)                AS published,
                 SUM(CASE WHEN status = 'draft'     THEN 1 ELSE 0 END)                AS drafts,
                 SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END)                AS cancelled,
+                SUM(CASE WHEN status = 'deleted'   THEN 1 ELSE 0 END)                AS deleted,
                 SUM(CASE WHEN start_date >= NOW() AND status = 'published'
                           THEN 1 ELSE 0 END)                                          AS upcoming
             FROM events
@@ -326,36 +339,40 @@ class AdminController
     $stmt->execute();
     $eventStats = $stmt->fetch();
 
-    // Bookings and revenue
+    // Bookings and revenue — exclude soft-deleted bookings
     $stmt = $this->db->prepare("
             SELECT
-                COUNT(*)                                                           AS total_bookings,
-                SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END)          AS paid_bookings,
-                SUM(CASE WHEN payment_status = 'pending' THEN 1 ELSE 0 END)       AS pending_bookings,
-                SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END) AS total_revenue
+                COUNT(*)                                                                   AS total_bookings,
+                SUM(CASE WHEN payment_status = 'paid'     THEN 1 ELSE 0 END)              AS paid_bookings,
+                SUM(CASE WHEN payment_status = 'pending'  THEN 1 ELSE 0 END)              AS pending_bookings,
+                SUM(CASE WHEN payment_status = 'refunded' THEN 1 ELSE 0 END)              AS refunded_bookings,
+                SUM(CASE WHEN payment_status = 'paid'     THEN total_amount ELSE 0 END)   AS total_revenue
             FROM bookings
+            WHERE deleted_at IS NULL
         ");
     $stmt->execute();
     $bookingStats = $stmt->fetch();
 
-    // Tickets issued
+    // Tickets
     $stmt = $this->db->prepare("
             SELECT
                 COUNT(*)                                      AS total_tickets,
                 SUM(CASE WHEN is_used = 1 THEN 1 ELSE 0 END) AS checked_in
             FROM tickets
+            WHERE deleted_at IS NULL
         ");
     $stmt->execute();
     $ticketStats = $stmt->fetch();
 
-    // Recent activity — last 7 days bookings
+    // Recent 7-day activity
     $stmt = $this->db->prepare("
             SELECT
-                DATE(created_at)                                                AS date,
-                COUNT(*)                                                        AS bookings,
-                SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END) AS revenue
+                DATE(created_at)                                                            AS date,
+                COUNT(*)                                                                    AS bookings,
+                SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END)        AS revenue
             FROM bookings
             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+              AND deleted_at IS NULL
             GROUP BY DATE(created_at)
             ORDER BY date ASC
         ");
