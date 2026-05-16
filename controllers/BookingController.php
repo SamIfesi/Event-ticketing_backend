@@ -162,21 +162,21 @@ class BookingController
           'quantity'    => $quantity,
         ]
       );
+
+      // 12. Return the Paystack data React needs to open the payment popup
+      Response::success([
+        'booking_id'        => $bookingId,
+        'reference'         => $reference,
+        'amount'            => $totalAmount,
+        'authorization_url' => $transaction['authorization_url'],
+        'access_code'       => $transaction['access_code'],
+      ], 'Payment initialized. Complete your payment to confirm booking.');
     } catch (Exception $e) {
       // If Paystack initialization fails, delete the pending booking
       $this->db->prepare('DELETE FROM bookings WHERE id = ?')->execute([$bookingId]);
       error_log('Paystack error: ' . $e->getMessage());
       Response::error('Payment initialization failed: ' . $e->getMessage(), 500);
     }
-
-    // 12. Return the Paystack data React needs to open the payment popup
-    Response::success([
-      'booking_id'        => $bookingId,
-      'reference'         => $reference,
-      'amount'            => $totalAmount,
-      'authorization_url' => $transaction['authorization_url'],
-      'access_code'       => $transaction['access_code'],
-    ], 'Payment initialized. Complete your payment to confirm booking.');
   }
 
   // ============================================================
@@ -234,75 +234,75 @@ class BookingController
     try {
       $paystack    = new PaystackService();
       $transaction = $paystack->verifyTransaction($reference);
-    } catch (Exception $e) {
-      Response::error('Could not verify payment. Please contact support.', 500);
-    }
 
-    // 5. Check Paystack says payment was successful
-    if ($transaction['status'] !== 'success') {
-      // Mark booking as failed
-      $this->db->prepare("UPDATE bookings SET payment_status = 'failed' WHERE id = ?")
-        ->execute([$booking['id']]);
-      Response::error('Payment was not successful. Please try again.', 400);
-    }
+      // 5. Check Paystack says payment was successful
+      if ($transaction['status'] !== 'success') {
+        // Mark booking as failed
+        $this->db->prepare("UPDATE bookings SET payment_status = 'failed' WHERE id = ?")
+          ->execute([$booking['id']]);
+        Response::error('Payment was not successful. Please try again.', 400);
+      }
 
-    // 6. Double-check the amount paid matches what we expected
-    //    Prevents someone from paying ₦1 for a ₦10,000 ticket
-    $amountPaidKobo    = (int) $transaction['amount'];
-    $expectedKobo      = (int) ($booking['total_amount'] * 100);
+      // 6. Double-check the amount paid matches what we expected
+      //    Prevents someone from paying ₦1 for a ₦10,000 ticket
+      $amountPaidKobo    = (int) $transaction['amount'];
+      $expectedKobo      = (int) ($booking['total_amount'] * 100);
 
-    if ($amountPaidKobo < $expectedKobo) {
-      Response::error('Payment amount does not match. Please contact support.', 400);
-    }
+      if ($amountPaidKobo < $expectedKobo) {
+        Response::error('Payment amount does not match. Please contact support.', 400);
+      }
 
-    // Mark booking as paid.
-    // The trg_booking_paid trigger fires here automatically and increments
-    // ticket_types.quantity_sold — no manual UPDATE needed.
-    $this->db->prepare("
+      // Mark booking as paid.
+      // The trg_booking_paid trigger fires here automatically and increments
+      // ticket_types.quantity_sold — no manual UPDATE needed.
+      $this->db->prepare("
             UPDATE bookings
             SET payment_status = 'paid', paid_at = NOW()
             WHERE id = ?
         ")->execute([$booking['id']]);
 
-    // Generate one ticket row per quantity purchased
-    $tickets = [];
-    $stmt    = $this->db->prepare("
+      // Generate one ticket row per quantity purchased
+      $tickets = [];
+      $stmt    = $this->db->prepare("
             INSERT INTO tickets (booking_id, user_id, event_id, qr_token)
             VALUES (?, ?, ?, ?)
         ");
 
-    for ($i = 0; $i < (int) $booking['quantity']; $i++) {
-      $qrToken = TokenHelper::generateQRToken();
-      $stmt->execute([
-        $booking['id'],
-        $booking['user_id'],
-        $booking['event_id'],
-        $qrToken,
-      ]);
-      $tickets[] = [
-        'id'       => $this->db->lastInsertId(),
-        'qr_token' => $qrToken,
-      ];
+      for ($i = 0; $i < (int) $booking['quantity']; $i++) {
+        $qrToken = TokenHelper::generateQRToken();
+        $stmt->execute([
+          $booking['id'],
+          $booking['user_id'],
+          $booking['event_id'],
+          $qrToken,
+        ]);
+        $tickets[] = [
+          'id'       => $this->db->lastInsertId(),
+          'qr_token' => $qrToken,
+        ];
+      }
+
+      // Queue ticket confirmation email
+      QueueService::sendTicketConfirmation(
+        $booking['user_email'],
+        $booking['user_name'],
+        $booking['event_title'],
+        $booking['event_start_date'],
+        $booking['event_location'],
+        $booking['ticket_type_name'],
+        (int) $booking['quantity'],
+        (float) $booking['total_amount'],
+        Environment::get('APP_URL') . '/dashboard'
+      );
+
+      Response::success([
+        'booking_id' => $booking['id'],
+        'event'      => $booking['event_title'],
+        'tickets'    => $tickets,
+      ], 'Payment confirmed! Your tickets have been issued.');
+    } catch (Exception $e) {
+      Response::error('Could not verify payment. Please contact support.', 500);
     }
-
-    // Queue ticket confirmation email
-    QueueService::sendTicketConfirmation(
-      $booking['user_email'],
-      $booking['user_name'],
-      $booking['event_title'],
-      $booking['event_start_date'],
-      $booking['event_location'],
-      $booking['ticket_type_name'],
-      (int) $booking['quantity'],
-      (float) $booking['total_amount'],
-      Environment::get('APP_URL') . '/dashboard'
-    );
-
-    Response::success([
-      'booking_id' => $booking['id'],
-      'event'      => $booking['event_title'],
-      'tickets'    => $tickets,
-    ], 'Payment confirmed! Your tickets have been issued.');
   }
 
   // ============================================================
