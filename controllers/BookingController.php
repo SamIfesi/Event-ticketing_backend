@@ -73,10 +73,59 @@ class BookingController
     }
 
     // 7. Calculate total
-    $unitPrice   = (float) $ticketType['price'];
-    $totalAmount = $unitPrice * $quantity;
+$unitPrice   = (float) $ticketType['price'];
+$totalAmount = $unitPrice * $quantity;
 
-    // 8. Generate a unique Paystack reference
+// 8. FREE TICKET — skip Paystack entirely
+if ($totalAmount == 0) {
+    $stmt = $this->db->prepare("
+        INSERT INTO bookings
+            (user_id, event_id, ticket_type_id, quantity, unit_price, total_amount, payment_status, paid_at)
+        VALUES
+            (?, ?, ?, ?, 0, 0, 'paid', NOW())
+    ");
+    $stmt->execute([
+        $userId,
+        $ticketType['event_id'],
+        $ticketTypeId,
+        $quantity,
+    ]);
+
+    $bookingId = $this->db->lastInsertId();
+
+    // Issue tickets immediately
+    $tickets = [];
+    $stmt    = $this->db->prepare("
+        INSERT INTO tickets (booking_id, user_id, event_id, qr_token)
+        VALUES (?, ?, ?, ?)
+    ");
+
+    for ($i = 0; $i < $quantity; $i++) {
+        $qrToken = TokenHelper::generateQRToken();
+        $stmt->execute([$bookingId, $userId, $ticketType['event_id'], $qrToken]);
+        $tickets[] = ['id' => $this->db->lastInsertId(), 'qr_token' => $qrToken];
+    }
+
+    QueueService::sendTicketConfirmation(
+        $userEmail,
+        $this->request->user['name'],
+        $ticketType['event_title'],
+        $ticketType['event_start_date'],
+        $ticketType['location'] ?? '',
+        $ticketType['name'],
+        $quantity,
+        0,
+        Environment::get('APP_URL') . '/dashboard'
+    );
+
+    Response::success([
+        'booking_id' => $bookingId,
+        'free'       => true,
+        'tickets'    => $tickets,
+    ], 'Your free ticket has been issued!');
+}
+
+// 9. Generate a unique Paystack reference
     $reference = TokenHelper::generatePaystackReference();
 
     // 9. Create a PENDING booking in the database
