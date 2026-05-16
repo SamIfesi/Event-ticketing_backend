@@ -116,7 +116,8 @@ class BookingController
     } catch (Exception $e) {
       // If Paystack initialization fails, delete the pending booking
       $this->db->prepare('DELETE FROM bookings WHERE id = ?')->execute([$bookingId]);
-      Response::error('Payment initialization failed. Please try again.', 500);
+      error_log('Paystack error: ' . $e->getMessage());
+      Response::error('Payment initialization failed: ' . $e->getMessage(), 500);
     }
 
     // 11. Return the Paystack data React needs to open the payment popup
