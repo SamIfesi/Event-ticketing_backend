@@ -27,7 +27,7 @@ class EventController
     $search     = trim($this->request->query('search', ''));
     $categoryId = $this->request->query('category', '');
     $dateFilter = $this->request->query('date', ''); // 'upcoming' | 'past' | ''
-    
+
     // Build query dynamically based on filters
     $conditions = ["e.status = 'published'", "e.deleted_at IS NULL"];
     $params     = [];
@@ -394,10 +394,21 @@ class EventController
             ");
       $stmt->execute([$userId]);
     }
-
-    Response::success(['events' => $stmt->fetchAll()]);
+    $events = array_map([$this, 'castEventFields'], $stmt->fetchAll());
+    Response::success(['events' => $events]);
   }
 
+  private function castEventFields(array $event): array
+  {
+    $event['id']                  = (int) $event['id'];
+    $event['organizer_id']         = (int) $event['organizer_id'];
+    $event['category_id']          = $event['category_id'] !== null ? (int) $event['category_id'] : null;
+    $event['total_tickets']        = (int) $event['total_tickets'];
+    $event['tickets_sold']          = (int) $event['tickets_sold'];
+    $event['tickets_available']     = (int) $event['tickets_available'];
+    $event['total_revenue']         = (float) $event['total_revenue'];
+    return $event;
+  }
   // ============================================================
   // PRIVATE HELPERS
   // ============================================================
