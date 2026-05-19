@@ -40,6 +40,9 @@ require_once __DIR__ . '/services/QRCodeService.php';
 require_once __DIR__ . '/services/MailService.php';
 require_once __DIR__ . '/services/LogService.php';
 require_once __DIR__ . '/services/QueueService.php';
+require_once __DIR__ . '/services/NotificationService.php';
+require_once __DIR__ . '/services/TransactionService.php';
+require_once __DIR__ . '/services/PayoutService.php';
 
 require_once __DIR__ . '/middleware/AuthMiddleware.php';
 require_once __DIR__ . '/middleware/RoleMiddleware.php';
@@ -54,6 +57,10 @@ require_once __DIR__ . '/controllers/CategoryController.php';
 require_once __DIR__ . '/controllers/OrganizerApplicationController.php';
 require_once __DIR__ . '/controllers/AdminController.php';
 require_once __DIR__ . '/controllers/DevController.php';
+require_once __DIR__ . '/controllers/NotificationController.php';
+require_once __DIR__ . '/controllers/TransactionController.php';
+require_once __DIR__ . '/controllers/PayoutController.php';
+require_once __DIR__ . '/controllers/OrganizerPaymentController.php';
 
 // ============================================================
 // 3. BOOTSTRAP
@@ -86,6 +93,10 @@ require_once __DIR__ . '/routes/tickets.php';
 require_once __DIR__ . '/routes/categories.php';
 require_once __DIR__ . '/routes/organizer_applications.php';
 require_once __DIR__ . '/routes/admin.php';
+require_once __DIR__ . '/routes/notifications.php';
+require_once __DIR__ . '/routes/transactions.php';
+require_once __DIR__ . '/routes/organizer_payment.php';
+require_once __DIR__ . '/routes/payouts.php';
 require_once __DIR__ . '/routes/dev.php';
 
 // ============================================================
