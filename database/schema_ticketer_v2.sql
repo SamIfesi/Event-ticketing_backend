@@ -218,6 +218,150 @@ CREATE TABLE IF NOT EXISTS `ticket_types` (
   CONSTRAINT `chk_no_oversell` CHECK (`quantity_sold` <= `quantity`)  -- [B]
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ==== START FOR nOTIFICATION, AUDITING AND PAYOUT SYSTEMS ====
+--  MIGRATION: Notifications + Transaction Audit + Payouts
+--  Run this entire file once in phpMyAdmin against your DB
+--  Order matters — do not rearrange the tables
+-- ============================================================
+
+USE event_ticketing; -- change to ticketer_db if on v2 schema
+
+
+-- ============================================================
+-- 1. NOTIFICATIONS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `notifications` (
+  `id`           INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `user_id`      INT UNSIGNED  NOT NULL,
+  `type`         VARCHAR(60)   NOT NULL,
+  `title`        VARCHAR(255)  NOT NULL,
+  `body`         TEXT          NOT NULL,
+  `action_url`   VARCHAR(500)  DEFAULT NULL,
+  `related_id`   INT UNSIGNED  DEFAULT NULL,
+  `related_type` VARCHAR(60)   DEFAULT NULL,
+  `is_read`      TINYINT(1)    NOT NULL DEFAULT 0,
+  `read_at`      DATETIME      DEFAULT NULL,
+  `created_at`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                 ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_notifications_user_read`   (`user_id`, `is_read`),
+  KEY `idx_notifications_user_recent` (`user_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================
+-- 2. TRANSACTION LOGS  (immutable financial audit trail)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `transaction_logs` (
+  `id`                 INT UNSIGNED    NOT NULL AUTO_INCREMENT,
+  `booking_id`         INT UNSIGNED    NOT NULL,
+  `user_id`            INT UNSIGNED    NOT NULL,
+  `event_id`           INT UNSIGNED    NOT NULL,
+  `organizer_id`       INT UNSIGNED    NOT NULL,
+  `type`               VARCHAR(60)     NOT NULL,
+  `amount`             DECIMAL(12,2)   NOT NULL DEFAULT 0.00,
+  `currency`           CHAR(3)         NOT NULL DEFAULT 'NGN',
+  `paystack_reference` VARCHAR(255)    DEFAULT NULL,
+  `paystack_status`    VARCHAR(60)     DEFAULT NULL,
+  `quantity`           INT UNSIGNED    DEFAULT 1,
+  `unit_price`         DECIMAL(10,2)   DEFAULT 0.00,
+  `platform_fee`       DECIMAL(10,2)   DEFAULT 0.00,
+  `organizer_amount`   DECIMAL(10,2)   DEFAULT 0.00,
+  `ticket_type_name`   VARCHAR(100)    DEFAULT NULL,
+  `event_title`        VARCHAR(255)    DEFAULT NULL,
+  `note`               TEXT            DEFAULT NULL,
+  `ip_address`         VARCHAR(50)     DEFAULT NULL,
+  `performed_by`       INT UNSIGNED    DEFAULT NULL,
+  `created_at`         DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_txlog_booking`   (`booking_id`),
+  KEY `idx_txlog_user`      (`user_id`),
+  KEY `idx_txlog_event`     (`event_id`),
+  KEY `idx_txlog_organizer` (`organizer_id`),
+  KEY `idx_txlog_type`      (`type`),
+  KEY `idx_txlog_created`   (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================
+-- 3. ORGANIZER PAYMENT DETAILS
+--    One row per organizer.
+--    Paystack subaccount is auto-created when this row is saved.
+--    platform_fee_percentage = admin sets this per organizer.
+--    cancellation_count + is_flagged = strike system.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `organizer_payment_details` (
+  `id`                      INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+  `user_id`                 INT UNSIGNED   NOT NULL UNIQUE,
+  `bank_name`               VARCHAR(100)   NOT NULL,
+  `bank_code`               VARCHAR(20)    NOT NULL,   -- Paystack bank code e.g. "058"
+  `account_number`          VARCHAR(20)    NOT NULL,
+  `account_name`            VARCHAR(255)   NOT NULL,   -- resolved by Paystack
+  `paystack_subaccount_code` VARCHAR(100)  DEFAULT NULL, -- e.g. "ACCT_xxxxxxxxxx"
+  `paystack_subaccount_id`  INT UNSIGNED   DEFAULT NULL,
+  `platform_fee_percentage` DECIMAL(5,2)   NOT NULL,   -- e.g. 10.00 = 10%
+  `is_verified`             TINYINT(1)     NOT NULL DEFAULT 0,
+  `is_flagged`              TINYINT(1)     NOT NULL DEFAULT 0,
+  `flag_reason`             TEXT           DEFAULT NULL,
+  `cancellation_count`      INT UNSIGNED   NOT NULL DEFAULT 0,
+  `created_at`              DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`              DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                             ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_opd_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================
+-- 4. EVENT PAYOUTS
+--    One row per event once payout is initiated.
+--    payout_status lifecycle:
+--      pending → processing → paid
+--                           → failed  (retry possible)
+--                           → frozen  (admin froze due to dispute)
+--                           → cancelled (event was cancelled, no payout)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `event_payouts` (
+  `id`                      INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+  `event_id`                INT UNSIGNED   NOT NULL UNIQUE,
+  `organizer_id`            INT UNSIGNED   NOT NULL,
+  `gross_revenue`           DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
+  `platform_fee_percentage` DECIMAL(5,2)   NOT NULL,
+  `platform_fee_amount`     DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
+  `organizer_amount`        DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
+  `payout_status`           ENUM('pending','processing','paid','failed','frozen','cancelled')
+                            NOT NULL DEFAULT 'pending',
+  `paystack_transfer_code`  VARCHAR(100)   DEFAULT NULL,
+  `paystack_transfer_ref`   VARCHAR(255)   DEFAULT NULL,
+  `hold_until`              DATETIME       NOT NULL,   -- auto payout fires after this
+  `triggered_by`            INT UNSIGNED   DEFAULT NULL, -- NULL = auto worker, user_id = manual
+  `freeze_reason`           TEXT           DEFAULT NULL,
+  `frozen_by`               INT UNSIGNED   DEFAULT NULL,
+  `frozen_at`               DATETIME       DEFAULT NULL,
+  `paid_at`                 DATETIME       DEFAULT NULL,
+  `failed_at`               DATETIME       DEFAULT NULL,
+  `failure_reason`          TEXT           DEFAULT NULL,
+  `attempts`                TINYINT        NOT NULL DEFAULT 0,
+  `created_at`              DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`              DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                             ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_payout_organizer` (`organizer_id`),
+  KEY `idx_payout_status`    (`payout_status`),
+  KEY `idx_payout_hold`      (`hold_until`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================
+-- 5. Add platform_fee_percentage to events table
+--    Defaults to NULL — pulled from organizer_payment_details
+--    at booking time. Admin can override per event.
+-- ============================================================
+ALTER TABLE `events`
+  ADD COLUMN `platform_fee_percentage` DECIMAL(5,2) DEFAULT NULL
+  AFTER `total_tickets`;
+
 -- ------------------------------------------------------------
 -- users  (unchanged)
 -- ------------------------------------------------------------
