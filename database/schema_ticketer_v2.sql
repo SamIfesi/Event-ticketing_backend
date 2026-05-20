@@ -361,6 +361,9 @@ CREATE TABLE IF NOT EXISTS `event_payouts` (
 ALTER TABLE `events`
   ADD COLUMN `platform_fee_percentage` DECIMAL(5,2) DEFAULT NULL
   AFTER `total_tickets`;
+ALTER TABLE organizer_payment_details 
+  ADD COLUMN paystack_recipient_code VARCHAR(100) DEFAULT NULL 
+  AFTER paystack_subaccount_id;
 
 -- ------------------------------------------------------------
 -- users  (unchanged)
