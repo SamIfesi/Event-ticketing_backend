@@ -207,6 +207,23 @@ class BookingController
           ]
         );
 
+        // ── NEW: transaction audit log ──
+        $orgStmt = $this->db->prepare("SELECT organizer_id FROM events WHERE id = ?");
+        $orgStmt->execute([$ticketType['event_id']]);
+        $organizerId = (int) $orgStmt->fetchColumn();
+
+        TransactionService::paymentInitiated([
+          'id'                 => $bookingId,
+          'user_id'            => $userId,
+          'event_id'           => $ticketType['event_id'],
+          'paystack_reference' => $reference,
+          'quantity'           => $quantity,
+          'unit_price'         => $unitPrice,
+          'ticket_type_name'   => $ticketType['name'],
+          'event_title'        => $ticketType['event_title'],
+        ], $organizerId);
+        // ── END NEW ──
+
         Response::success([
           'booking_id'        => $bookingId,
           'reference'         => $reference,
@@ -257,6 +274,7 @@ class BookingController
                 e.title      AS event_title,
                 e.location   AS event_location,
                 e.start_date AS event_start_date,
+                e.organizer_id,
                 u.name       AS user_name,
                 u.email      AS user_email
             FROM bookings b
@@ -304,6 +322,12 @@ class BookingController
         $this->db->prepare("
                     UPDATE bookings SET payment_status = 'failed' WHERE id = ?
                 ")->execute([$booking['id']]);
+
+        // ── NEW ── log failed transaction and notify user
+        TransactionService::paymentFailed($booking, 'Paystack returned: ' . $transaction['status']);
+        NotificationService::bookingFailed((int)$booking['user_id'], (int)$booking['id'], $booking['event_title']);
+        // ── END NEW ──
+
         Response::error('Payment was not successful. Please try again.', 400);
         return;
       }
@@ -330,6 +354,67 @@ class BookingController
                     WHERE id = ? AND payment_status = 'pending'
                 ");
         $updateStmt->execute([$booking['id']]);
+
+        // ── NEW: fee calculation + audit + notifications + payout accumulation ──
+        $feePercent      = PayoutService::getFeePercentage((int)$booking['event_id'], (int)$booking['organizer_id']);
+        $split           = PayoutService::calculateSplit((float)$booking['total_amount'], $feePercent);
+
+        TransactionService::paymentConfirmed(
+          $booking,
+          $split['platform_fee'],
+          $split['organizer_amount'],
+          $transaction['status']
+        );
+
+        PayoutService::accumulateRevenue(
+          (int)   $booking['event_id'],
+          (int)   $booking['organizer_id'],
+          (float) $booking['total_amount'],
+          $feePercent
+        );
+
+        NotificationService::bookingConfirmed(
+          (int)   $booking['user_id'],
+          (int)   $booking['id'],
+          $booking['event_title'],
+          (int)   $booking['event_id'],
+          (int)   $booking['quantity'],
+          (float) $booking['total_amount']
+        );
+
+        NotificationService::newBookingReceived(
+          (int)   $booking['organizer_id'],
+          (int)   $booking['id'],
+          $booking['user_name'],
+          $booking['event_title'],
+          (int)   $booking['event_id'],
+          (int)   $booking['quantity'],
+          (float) $booking['total_amount']
+        );
+
+        // Low tickets warning — fires if ≤10% tickets remain
+        $salesStmt = $this->db->prepare("
+            SELECT tt.quantity, COALESCE(s.tickets_sold,0) AS sold
+            FROM ticket_types tt
+            LEFT JOIN v_event_sales s ON s.event_id = tt.event_id
+            WHERE tt.id = ?
+        ");
+        $salesStmt->execute([$booking['ticket_type_id']]);
+        $sales = $salesStmt->fetch();
+        if ($sales) {
+          $remaining = (int)$sales['quantity'] - (int)$sales['sold'];
+          $pct = $sales['quantity'] > 0 ? ($remaining / $sales['quantity']) : 1;
+          if ($pct <= 0.10 && $remaining > 0) {
+            NotificationService::lowTicketsWarning(
+              (int)$booking['organizer_id'],
+              (int)$booking['event_id'],
+              $booking['event_title'],
+              $remaining,
+              (int)$sales['quantity']
+            );
+          }
+        }
+        // ── END NEW ──
 
         // If no rows were updated, another request already processed this
         if ($updateStmt->rowCount() === 0) {
