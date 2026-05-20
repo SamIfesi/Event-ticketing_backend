@@ -329,6 +329,25 @@ class DevController
       $tickets[] = $qrToken;
     }
 
+    // ── NEW ──
+    $orgStmt = $this->db->prepare("SELECT organizer_id FROM events WHERE id = ?");
+    $orgStmt->execute([$booking['event_id']]);
+    $organizerId = (int) $orgStmt->fetchColumn();
+
+    TransactionService::forcedPayment(array_merge($booking, [
+      'organizer_id'     => $organizerId,
+      'ticket_type_name' => $booking['ticket_type_name'],
+    ]), (int) $this->request->user['id']);
+
+    NotificationService::bookingConfirmed(
+      (int)   $booking['user_id'],
+      (int)   $booking['id'],
+      $booking['event_title'],
+      (int)   $booking['event_id'],
+      (int)   $booking['quantity'],
+      (float) $booking['total_amount']
+    );
+    // ── END NEW ──
     Response::success([
       'booking_id' => $bookingId,
       'tickets'    => $tickets,
