@@ -195,6 +195,24 @@ class EventController
       Response::validationError($errors);
     }
 
+    // ── NEW: block publishing if no bank details ──
+    $requestedStatus = $input['status'] ?? Constants::EVENT_DRAFT;
+    if ($requestedStatus === Constants::EVENT_PUBLISHED) {
+      $bankStmt = $this->db->prepare("
+            SELECT id FROM organizer_payment_details
+            WHERE user_id = ? AND is_verified = 1
+        ");
+      $bankStmt->execute([$this->request->user['id']]);
+      if (!$bankStmt->fetch()) {
+        NotificationService::bankDetailsRequired((int)$this->request->user['id']);
+        Response::error(
+          'You must add your bank account details before publishing an event. Go to Payment Settings.',
+          403
+        );
+      }
+    }
+    // ── END NEW ──
+
     // Generate a URL slug from the title
     $slug = $this->generateSlug($input['title']);
 
@@ -274,6 +292,23 @@ class EventController
       }
     }
 
+    // ── NEW: block publishing without bank details ──
+    if (isset($input['status']) && $input['status'] === Constants::EVENT_PUBLISHED) {
+      $bankStmt = $this->db->prepare("
+            SELECT id FROM organizer_payment_details
+            WHERE user_id = ? AND is_verified = 1
+        ");
+      $bankStmt->execute([$this->request->user['id']]);
+      if (!$bankStmt->fetch()) {
+        NotificationService::bankDetailsRequired((int)$this->request->user['id']);
+        Response::error(
+          'You must add your bank account details before publishing an event. Go to Payment Settings.',
+          403
+        );
+      }
+    }
+    // ── END NEW ──
+
     // Only update fields that were actually sent
     $stmt = $this->db->prepare("
             UPDATE events SET
@@ -305,8 +340,15 @@ class EventController
     // Return updated event
     $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ?');
     $stmt->execute([$eventId]);
+    $updatedEvent = $stmt->fetch();
 
-    Response::success(['event' => $stmt->fetch()], 'Event updated successfully.');
+    // ── NEW: update payout hold_until if end_date changed ──
+    if (!empty($input['end_date'])) {
+      PayoutService::setHoldUntil($eventId, $updatedEvent['end_date']);
+    }
+    // ── END NEW ──
+
+    Response::success(['event' => $updatedEvent], 'Event updated successfully.');
   }
 
   // ============================================================
@@ -345,6 +387,20 @@ class EventController
     // This preserves booking history for users who already bought tickets
     $this->db->prepare("UPDATE events SET status = 'cancelled' WHERE id = ?")
       ->execute([$eventId]);
+
+    // ── NEW: strike system + notify attendees ──
+    $wasFlagged = PayoutService::recordCancellation((int)$event['organizer_id']);
+    PayoutService::cancelPayout($eventId);
+
+    NotificationService::notifyEventAttendees(
+      $this->db,
+      $eventId,
+      'event_cancelled',
+      "Event Cancelled — {$event['title']}",
+      "{$event['title']} has been cancelled by the organizer. Please contact support if you need a refund.",
+      "/bookings"
+    );
+    // ── END NEW ──
 
     Response::success(null, 'Event cancelled successfully. All existing bookings and tickets are preserved.');
   }
