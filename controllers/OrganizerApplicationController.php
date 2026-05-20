@@ -179,19 +179,26 @@ class OrganizerApplicationController
         Response::error('This application has already been reviewed.', 400);
       }
 
-    // Update the application status
+      // Update the application status
       $this->db->prepare("
         UPDATE organizer_applications
         SET status = ?, reviewed_by = ?, reviewed_at = NOW()
         WHERE id = ?
       ")->execute([$decision, $adminId, $applicationId]);
 
-    // If approved, upgrade the user's role immediately
+      // If approved, upgrade the user's role immediately
       if ($decision === 'approved') {
         $this->db->prepare("
           UPDATE users SET role = ? WHERE id = ?
         ")->execute([Constants::ROLE_ORGANIZER, $application['user_id']]);
       }
+
+      // ── NEW ──
+      $decision === 'approved'
+        ? NotificationService::organizerApproved($application['user_id'], $application['org_name'])
+        : NotificationService::organizerRejected($application['user_id'], $application['org_name']);
+
+      // ── END NEW ──
 
       $message = $decision === 'approved'
         ? 'Application approved. User has been upgraded to organizer.'
