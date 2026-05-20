@@ -7,8 +7,8 @@
     { "method": "GET", "endpoint": "/api/auth/me" },
     { "method": "POST", "endpoint": "/api/auth/verify-email" },
     { "method": "POST", "endpoint": "/api/auth/resend-otp" },
-    { "method": "POST", "endpoint": "/api/auth/password-otp" },
-    { "method": "POST", "endpoint": "/api/auth/verify-password-otp" },
+    { "method": "POST", "endpoint": "/api/auth/forgot-password" },
+    { "method": "POST", "endpoint": "/api/auth/verify-forgot-otp" },
     { "method": "POST", "endpoint": "/api/auth/reset-password" }
   ],
   "profile": [
@@ -74,5 +74,69 @@
     { "method": "POST", "endpoint": "/api/dev/users/:id/role" },
     { "method": "GET", "endpoint": "/api/dev/bookings/failed" },
     { "method": "POST", "endpoint": "/api/dev/bookings/:id/force-pay" }
+  ],
+  "notifications": [
+    {
+      "method": "GET",
+      "endpoint": "/api/notifications",
+      "auth": "any",
+      "description": "Paginated list. ?unread=1 to filter."
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/notifications/unread",
+      "auth": "any",
+      "description": "Unread count only — poll for bell badge."
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/notifications/:id/read",
+      "auth": "any",
+      "description": "Mark one notification as read."
+    },
+    {
+      "method": "PUT",
+      "endpoint": "/api/notifications/read-all",
+      "auth": "any",
+      "description": "Mark all notifications as read."
+    },
+    {
+      "method": "DELETE",
+      "endpoint": "/api/notifications/:id",
+      "auth": "any",
+      "description": "Delete one notification."
+    }
+  ],
+  "transactions": [
+    {
+      "method": "GET",
+      "endpoint": "/api/transactions/mine",
+      "auth": "attendee",
+      "description": "Own payment history."
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/organizer/transactions",
+      "auth": "organizer/dev",
+      "description": "Revenue ledger. ?event_id=&type=&from=&to="
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/admin/transactions",
+      "auth": "admin/dev",
+      "description": "Platform-wide audit log. Full filters."
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/admin/transactions/summary",
+      "auth": "admin/dev",
+      "description": "Financial KPIs. ?from=&to= (defaults to current month)."
+    },
+    {
+      "method": "GET",
+      "endpoint": "/api/admin/transactions/:bookingId",
+      "auth": "admin/dev",
+      "description": "Full audit trail for a single booking."
+    }
   ]
 }
