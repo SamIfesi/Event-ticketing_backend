@@ -153,6 +153,10 @@ class AdminController
 
     $this->db->prepare("UPDATE users SET role = ? WHERE id = ?")->execute([$newRole, $targetId]);
 
+    // ── NEW ──
+    NotificationService::roleChanged($targetId, $newRole);
+    // ── END NEW ──
+
     Response::success(null, "User role updated to '{$newRole}' successfully.");
   }
 
@@ -176,6 +180,12 @@ class AdminController
     }
 
     $this->db->prepare("UPDATE users SET is_active = ? WHERE id = ?")->execute([$isActive ? 1 : 0, $targetId]);
+
+    // ── NEW ──
+    if (!$isActive) {
+      NotificationService::accountDeactivated($targetId);
+    }
+    // ── END NEW ──
 
     Response::success(null, $isActive ? 'User account activated.' : 'User account deactivated.');
   }
@@ -295,6 +305,24 @@ class AdminController
                 UPDATE events SET status = ?, deleted_at = NULL WHERE id = ?
             ")->execute([$newStatus, $eventId]);
     }
+
+    // ── NEW ──
+    if (in_array($newStatus, [Constants::EVENT_CANCELLED, Constants::EVENT_DELETED], true)) {
+      $evtStmt = $this->db->prepare("SELECT title FROM events WHERE id = ?");
+      $evtStmt->execute([$eventId]);
+      $evtTitle = $evtStmt->fetchColumn();
+ 
+      NotificationService::notifyEventAttendees(
+        $this->db,
+        $eventId,
+        'event_cancelled',
+        "Event Cancelled - {$evtTitle}",
+        "{$evtTitle} has been cancelled. Please contact support for your refund",
+        "/bookings"
+      );
+      PayoutService::cancelPayout($eventId);
+    }
+    // ── END NEW ──
 
     Response::success(null, "Event status updated to '{$newStatus}'.");
   }
