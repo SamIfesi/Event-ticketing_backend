@@ -268,31 +268,31 @@ class EventController
     $eventId = (int) $params['id'];
     $userId  = $this->request->user['id'];
     $role    = $this->request->user['role'];
-  
+
     $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ? AND deleted_at IS NULL');
     $stmt->execute([$eventId]);
     $event = $stmt->fetch();
-  
+
     if (!$event) {
       Response::notFound('Event not found.');
     }
-  
-      // Organizers can only edit their own events
-      // Dev can edit any event
+
+    // Organizers can only edit their own events
+    // Dev can edit any event
     if ($role === Constants::ROLE_ORGANIZER && (int) $event['organizer_id'] !== $userId) {
       Response::forbidden('You can only edit your own events.');
     }
-  
+
     $input = $this->request->body;
-  
-      // Validate dates if both are provided
+
+    // Validate dates if both are provided
     if (!empty($input['start_date']) && !empty($input['end_date'])) {
       if (strtotime($input['end_date']) <= strtotime($input['start_date'])) {
         Response::validationError(['end_date' => 'End date must be after start date.']);
       }
     }
-  
-      // ── NEW: block publishing without bank details ──
+
+    // ── NEW: block publishing without bank details ──
     if (isset($input['status']) && $input['status'] === Constants::EVENT_PUBLISHED) {
       $bankStmt = $this->db->prepare("
         SELECT id FROM organizer_payment_details
@@ -307,8 +307,8 @@ class EventController
         );
       }
     }
-      // ── END NEW ──
-  
+    // ── END NEW ──
+
     // Upsert ticket types
     if (!empty($input['ticket_types']) && is_array($input['ticket_types'])) {
       foreach ($input['ticket_types'] as $type) {
@@ -351,7 +351,7 @@ class EventController
         }
       }
     }
-  
+
     // Update event fields
     $stmt = $this->db->prepare("
       UPDATE events SET
@@ -366,7 +366,7 @@ class EventController
         status        = COALESCE(?, status)
       WHERE id = ?
     ");
-  
+
     $stmt->execute([
       $input['category_id']   ?? null,
       $input['title']         ?? null,
@@ -379,18 +379,18 @@ class EventController
       $input['status']        ?? null,
       $eventId,
     ]);
-  
-      // Return updated event
+
+    // Return updated event
     $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ?');
     $stmt->execute([$eventId]);
     $updatedEvent = $stmt->fetch();
-  
-      // ── NEW: update payout hold_until if end_date changed ──
+
+    // ── NEW: update payout hold_until if end_date changed ──
     if (!empty($input['end_date'])) {
       PayoutService::setHoldUntil($eventId, $updatedEvent['end_date']);
     }
-      // ── END NEW ──
-  
+    // ── END NEW ──
+
     Response::success(['event' => $updatedEvent], 'Event updated successfully.');
   }
 
@@ -548,10 +548,9 @@ class EventController
       ]);
     }
   }
-}
 
-public function showOwn(array $params): void
-{
+  public function showOwn(array $params): void
+  {
     $eventId = (int) $params['id'];
     $userId  = $this->request->user['id'];
     $role    = $this->request->user['role'];
@@ -580,4 +579,5 @@ public function showOwn(array $params): void
     $event['ticket_types'] = $stmt->fetchAll();
 
     Response::success(['event' => $event]);
+  }
 }
