@@ -268,36 +268,36 @@ class EventController
     $eventId = (int) $params['id'];
     $userId  = $this->request->user['id'];
     $role    = $this->request->user['role'];
-
+  
     $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ? AND deleted_at IS NULL');
     $stmt->execute([$eventId]);
     $event = $stmt->fetch();
-
+  
     if (!$event) {
       Response::notFound('Event not found.');
     }
-
-    // Organizers can only edit their own events
-    // Dev can edit any event
+  
+      // Organizers can only edit their own events
+      // Dev can edit any event
     if ($role === Constants::ROLE_ORGANIZER && (int) $event['organizer_id'] !== $userId) {
       Response::forbidden('You can only edit your own events.');
     }
-
+  
     $input = $this->request->body;
-
-    // Validate dates if both are provided
+  
+      // Validate dates if both are provided
     if (!empty($input['start_date']) && !empty($input['end_date'])) {
       if (strtotime($input['end_date']) <= strtotime($input['start_date'])) {
         Response::validationError(['end_date' => 'End date must be after start date.']);
       }
     }
-
-    // ── NEW: block publishing without bank details ──
+  
+      // ── NEW: block publishing without bank details ──
     if (isset($input['status']) && $input['status'] === Constants::EVENT_PUBLISHED) {
       $bankStmt = $this->db->prepare("
-            SELECT id FROM organizer_payment_details
-            WHERE user_id = ? AND is_verified = 1
-        ");
+        SELECT id FROM organizer_payment_details
+        WHERE user_id = ? AND is_verified = 1
+      ");
       $bankStmt->execute([$this->request->user['id']]);
       if (!$bankStmt->fetch()) {
         NotificationService::bankDetailsRequired((int)$this->request->user['id']);
@@ -307,63 +307,66 @@ class EventController
         );
       }
     }
-    // ── END NEW ──
-
-    // Only update fields that were actually sent
+      // ── END NEW ──
+  
+    // Upsert ticket types
     if (!empty($input['ticket_types']) && is_array($input['ticket_types'])) {
       foreach ($input['ticket_types'] as $type) {
         if (!empty($type['id'])) {
+          // Update existing ticket type
           $this->db->prepare("
             UPDATE ticket_types SET
-              name = COALESCE(?, name),
-              description = COALESCE(?, description),
-              price = COALESCE(?, price),
-              quantity = COALESCE(?, quantity),
-              sales_end_at = COALESCE(?, sales_end_at)
+              name         = COALESCE(?, name),
+              description  = COALESCE(NULLIF(?, ''), description),
+              price        = COALESCE(?, price),
+              quantity     = COALESCE(?, quantity),
+              sales_end_at = ?
             WHERE id = ? AND event_id = ?
-        ")->execute([
-            $type['name'] ?? null,
-            $type['description'] ?? null,
-            $type['description'] ?? null,
-            $type['price'] ?? null,
-            $type['quantity'] ?? null,
-            $type['sales_end_at'] ?? null,
-            $type['id'],
-            $eventId
+          ")->execute([
+            $type['name']         ?? null,
+            $type['description']  ?? '',
+            $type['price']        ?? null,
+            $type['quantity']     ?? null,
+            $type['sales_end_at'] ?: null,
+            (int) $type['id'],
+            $eventId,
           ]);
         } else {
+          // Insert new ticket type
           if (empty($type['name']) || !isset($type['price']) || empty($type['quantity'])) {
             continue;
           }
           $this->db->prepare("
-            INSERT INTO ticket_type
+            INSERT INTO ticket_types
               (event_id, name, description, price, quantity, sales_end_at)
             VALUES (?, ?, ?, ?, ?, ?)
           ")->execute([
             $eventId,
             trim($type['name']),
-            $type['description'] ?? null,
+            $type['description']  ?? null,
             (float) $type['price'],
-            (int) $type['quantity'],
-            $type['sales_end_at'] ?? null
+            (int)   $type['quantity'],
+            $type['sales_end_at'] ?: null,
           ]);
         }
       }
     }
+  
+    // Update event fields
     $stmt = $this->db->prepare("
-            UPDATE events SET
-                category_id   = COALESCE(?, category_id),
-                title         = COALESCE(?, title),
-                description   = COALESCE(?, description),
-                location      = COALESCE(?, location),
-                banner_image  = COALESCE(?, banner_image),
-                start_date    = COALESCE(?, start_date),
-                end_date      = COALESCE(?, end_date),
-                total_tickets = COALESCE(?, total_tickets),
-                status        = COALESCE(?, status)
-            WHERE id = ?
-        ");
-
+      UPDATE events SET
+        category_id   = COALESCE(?, category_id),
+        title         = COALESCE(?, title),
+        description   = COALESCE(?, description),
+        location      = COALESCE(?, location),
+        banner_image  = COALESCE(?, banner_image),
+        start_date    = COALESCE(?, start_date),
+        end_date      = COALESCE(?, end_date),
+        total_tickets = COALESCE(?, total_tickets),
+        status        = COALESCE(?, status)
+      WHERE id = ?
+    ");
+  
     $stmt->execute([
       $input['category_id']   ?? null,
       $input['title']         ?? null,
@@ -376,18 +379,18 @@ class EventController
       $input['status']        ?? null,
       $eventId,
     ]);
-
-    // Return updated event
+  
+      // Return updated event
     $stmt = $this->db->prepare('SELECT * FROM events WHERE id = ?');
     $stmt->execute([$eventId]);
     $updatedEvent = $stmt->fetch();
-
-    // ── NEW: update payout hold_until if end_date changed ──
+  
+      // ── NEW: update payout hold_until if end_date changed ──
     if (!empty($input['end_date'])) {
       PayoutService::setHoldUntil($eventId, $updatedEvent['end_date']);
     }
-    // ── END NEW ──
-
+      // ── END NEW ──
+  
     Response::success(['event' => $updatedEvent], 'Event updated successfully.');
   }
 
