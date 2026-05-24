@@ -310,6 +310,46 @@ class EventController
     // ── END NEW ──
 
     // Only update fields that were actually sent
+    if (!empty($input['ticket_types']) && is_array($input['ticket_types'])) {
+      foreach ($input['ticket_types'] as $type) {
+        if (!empty($type['id'])) {
+          $this->db->prepare("
+            UPDATE ticket_types SET
+              name = COALESCE(?, name),
+              description = COALESCE(?, description),
+              price = COALESCE(?, price),
+              quantity = COALESCE(?, quantity),
+              sales_end_at = COALESCE(?, sales_end_at)
+            WHERE id = ? AND event_id = ?
+        ")->execute([
+            $type['name'] ?? null,
+            $type['description'] ?? null,
+            $type['description'] ?? null,
+            $type['price'] ?? null,
+            $type['quantity'] ?? null,
+            $type['sales_end_at'] ?? null,
+            $type['id'],
+            $eventId
+          ]);
+        } else {
+          if (empty($type['name']) || !isset($type['price']) || empty($type['quantity'])) {
+            continue;
+          }
+          $this->db->prepare("
+            INSERT INTO ticket_type
+              (event_id, name, description, price, quantity, sales_end_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          ")->execute([
+            $eventId,
+            trim($type['name']),
+            $type['description'] ?? null,
+            (float) $type['price'],
+            (int) $type['quantity'],
+            $type['sales_end_at'] ?? null
+          ]);
+        }
+      }
+    }
     $stmt = $this->db->prepare("
             UPDATE events SET
                 category_id   = COALESCE(?, category_id),
@@ -505,4 +545,36 @@ class EventController
       ]);
     }
   }
+}
+
+public function showOwn(array $params): void
+{
+    $eventId = (int) $params['id'];
+    $userId  = $this->request->user['id'];
+    $role    = $this->request->user['role'];
+
+    $stmt = $this->db->prepare("
+        SELECT e.*, 
+            u.name AS organizer_name,
+            c.name AS category_name
+        FROM events e
+        JOIN users u ON u.id = e.organizer_id
+        LEFT JOIN categories c ON c.id = e.category_id
+        WHERE e.id = ?
+          AND e.deleted_at IS NULL
+          AND (e.organizer_id = ? OR ? = 'dev')
+    ");
+    $stmt->execute([$eventId, $userId, $role]);
+    $event = $stmt->fetch();
+
+    if (!$event) Response::notFound('Event not found.');
+
+    $stmt = $this->db->prepare("
+        SELECT id, name, description, price, quantity, quantity_sold, sales_end_at
+        FROM ticket_types WHERE event_id = ? ORDER BY price ASC
+    ");
+    $stmt->execute([$eventId]);
+    $event['ticket_types'] = $stmt->fetchAll();
+
+    Response::success(['event' => $event]);
 }
