@@ -43,6 +43,10 @@ class QueueService
     }
   }
 
+  // ============================================================
+  // EMAIL JOBS
+  // ============================================================
+
   public static function sendOTP(string $email, string $name, string $otp, string $type): void
   {
     self::push('send_otp', [
@@ -65,15 +69,15 @@ class QueueService
     string $dashboardUrl
   ): void {
     self::push('send_ticket_confirmation', [
-      'email'         => $email,
-      'name'          => $name,
-      'event_title'   => $eventTitle,
-      'event_date'    => $eventDate,
+      'email'          => $email,
+      'name'           => $name,
+      'event_title'    => $eventTitle,
+      'event_date'     => $eventDate,
       'event_location' => $eventLocation,
-      'ticket_type'   => $ticketType,
-      'quantity'      => $quantity,
-      'total_amount'  => $totalAmount,
-      'dashboard_url' => $dashboardUrl,
+      'ticket_type'    => $ticketType,
+      'quantity'       => $quantity,
+      'total_amount'   => $totalAmount,
+      'dashboard_url'  => $dashboardUrl,
     ]);
   }
 
@@ -83,5 +87,40 @@ class QueueService
       'email' => $email,
       'name'  => $name,
     ]);
+  }
+
+    // ============================================================
+    // PDF JOBS
+    // ============================================================
+
+  /**
+   * Queue a tictet PDF generation job for a paid booking.
+   *
+   * Called from BookingController::verify() after payment confirmed.
+   * Delayed by 5 seconds to let the booking transaction fully commit
+   * before Browsershot tries to read it.
+   *
+   * @param int $bookingId  The confirmed paid booking ID
+   * @param int $delaySeconds  Seconds to wait before processing (default 5)
+   */
+  public static function generateTicket(int $bookingId, int $delaySeconds = 5): void
+  {
+    self::push('generate_ticket', [
+      'booking_id' => $bookingId,
+    ], $delaySeconds);
+  }
+
+  /**
+   * Queue tictet generation for multiple bookings at once.
+   * Used by admin when bulk-processing tictets.
+   *
+   * @param int[] $bookingIds
+   */
+  public static function generateTicketBulk(array $bookingIds): void
+  {
+    foreach ($bookingIds as $index => $bookingId) {
+      // Stagger by 3 seconds each to avoid hammering Chromium
+      self::generateTicket((int) $bookingId, 5 + ($index * 3));
+    }
   }
 }
