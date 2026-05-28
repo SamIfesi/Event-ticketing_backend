@@ -158,6 +158,7 @@ class BookingController
           0,
           Environment::get('APP_URL') . '/dashboard'
         );
+        QueueService::generateTicket($bookingId, 10); // Queue ticket PDF generation
 
         Response::success([
           'booking_id' => $bookingId,
@@ -457,7 +458,12 @@ class BookingController
         return;
       }
 
-      // 10. Send confirmation email outside the transaction
+      // 10. Queue ticket PDF generation (runs after email to avoid Chromium contention)
+      // Delayed by 10s to let the email job start first and
+      // avoid two Chromium instances competing for resources.
+      QueueService::generateTicket((int) $booking['id'], 10);
+
+      // 11. Send confirmation email outside the transaction
       QueueService::sendTicketConfirmation(
         $booking['user_email'],
         $booking['user_name'],
