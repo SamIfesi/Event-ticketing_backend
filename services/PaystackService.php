@@ -256,6 +256,8 @@ class PaystackService
     $options = [
       CURLOPT_URL            => $this->baseUrl . $endpoint,
       CURLOPT_RETURNTRANSFER => true,
+      CURLOPT_SSL_VERIFYPEER => false, // REMOVE ME DURING DEVELOPMENT
+      CURLOPT_SSL_VERIFYHOST => false, // REMOVE ME TOO
       CURLOPT_HTTPHEADER     => [
         'Authorization: Bearer ' . $this->secretKey,
         'Content-Type: application/json',
