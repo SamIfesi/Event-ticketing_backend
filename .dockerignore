@@ -1,0 +1,43 @@
+# Git
+.git
+.gitignore
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Composer cache / vendor (rebuilt in Docker)
+vendor/
+
+# Node modules
+node_modules/
+
+# Storage (mounted as volume)
+storage/qrcodes/
+storage/tickets/
+storage/banners/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docker files (no need to copy into image)
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile
+
+# Logs
+*.log
+logs/
+
+# Tests
+tests/
+phpunit.xml
+
+# Misc dev files
+check_jobs.php
+prompt.html
+*.sql.bak
