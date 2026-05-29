@@ -2,15 +2,15 @@
 
 // ============================================================
 // QUEUE WORKER
-// Runs as a background process or cron job
-// Picks up pending jobs and processes them one by one
+// Runs as a background process or cron job.
+// Picks up pending jobs and processes them one by one.
 //
 // HOW TO RUN LOCALLY (in a separate terminal):
 //   php worker.php
 //
-// HOW TO RUN ON RAILWAY:
-//   Add a cron job in Railway that runs: php worker.php
-//   Set it to run every minute: * * * * *
+// HOW TO RUN ON RAILWAY / DOCKER:
+//   Add a cron job: * * * * * php /var/www/html/worker.php
+//   Or keep it running: while true; do php worker.php; sleep 30; done
 // ============================================================
 
 declare(strict_types=1);
@@ -23,6 +23,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/config/Database.php';
 require_once __DIR__ . '/config/Constants.php';
 require_once __DIR__ . '/services/MailService.php';
+require_once __DIR__ . '/services/PDFService.php';
 
 $db = Database::connect();
 
@@ -33,9 +34,9 @@ echo "[" . date('Y-m-d H:i:s') . "] Worker started.\n";
 // ============================================================
 $stmt = $db->prepare("
     SELECT * FROM jobs
-    WHERE status = 'pending'
+    WHERE status       = 'pending'
       AND available_at <= NOW()
-      AND attempts < max_attempts
+      AND attempts      < max_attempts
     ORDER BY created_at ASC
     LIMIT 10
 ");
@@ -58,17 +59,20 @@ foreach ($jobs as $job) {
 
   // Mark as processing so another worker doesn't pick it up
   $db->prepare("
-        UPDATE jobs SET status = 'processing', attempts = attempts + 1 WHERE id = ?
+        UPDATE jobs
+        SET status = 'processing', attempts = attempts + 1
+        WHERE id = ?
     ")->execute([$jobId]);
 
   try {
-    $mailer = new MailService();
     $success = false;
 
-    // ---- Route to the correct mail method ----
     switch ($type) {
 
+      // ── EMAIL JOBS ────────────────────────────────────
+
       case 'send_otp':
+        $mailer  = new MailService();
         $success = $mailer->sendOTP(
           $payload['email'],
           $payload['name'],
@@ -78,6 +82,7 @@ foreach ($jobs as $job) {
         break;
 
       case 'send_ticket_confirmation':
+        $mailer  = new MailService();
         $success = $mailer->sendTicketConfirmation(
           $payload['email'],
           $payload['name'],
@@ -92,35 +97,71 @@ foreach ($jobs as $job) {
         break;
 
       case 'send_password_changed':
+        $mailer  = new MailService();
         $success = $mailer->sendPasswordChanged(
           $payload['email'],
           $payload['name']
         );
         break;
 
+      // ── PDF JOBS ──────────────────────────────────────
+
+      case 'generate_ticket':
+        $bookingId = (int) ($payload['booking_id'] ?? 0);
+
+        if ($bookingId === 0) {
+          throw new Exception('generate_ticket job missing booking_id in payload.');
+        }
+
+        echo "[" . date('Y-m-d H:i:s') . "] Generating ticket PDF for booking #{$bookingId}\n";
+
+        // Skip if already generated (idempotent)
+        if (PDFService::ticketExists($bookingId)) {
+          echo "[" . date('Y-m-d H:i:s') . "] Ticket for booking #{$bookingId} already exists. Skipping.\n";
+          $success = true;
+          break;
+        }
+
+        $filePath = PDFService::generateTicket($bookingId);
+        $fileSize = filesize($filePath);
+
+        echo "[" . date('Y-m-d H:i:s') . "] Ticket generated: {$filePath} (" . round($fileSize / 1024, 1) . " KB)\n";
+        $success = true;
+        break;
+
+      // ── UNKNOWN JOB TYPE — skip gracefully ────────────
+
       default:
+        echo "[" . date('Y-m-d H:i:s') . "] Unknown job type '{$type}' — marking as failed.\n";
         throw new Exception("Unknown job type: {$type}");
     }
 
     if ($success) {
-      // Mark as done
       $db->prepare("
-                UPDATE jobs SET status = 'done', completed_at = NOW() WHERE id = ?
+                UPDATE jobs
+                SET status       = 'done',
+                    completed_at = NOW()
+                WHERE id = ?
             ")->execute([$jobId]);
-      echo "[" . date('Y-m-d H:i:s') . "] Job #{$jobId} completed successfully.\n";
+
+      echo "[" . date('Y-m-d H:i:s') . "] ✓ Job #{$jobId} completed.\n";
     } else {
-      throw new Exception('Mail send returned false — check SMTP credentials.');
+      throw new Exception('Job handler returned false — check service logs.');
     }
   } catch (Exception $e) {
-    $error = $e->getMessage();
-    echo "[" . date('Y-m-d H:i:s') . "] Job #{$jobId} failed: {$error}\n";
+    $error        = $e->getMessage();
+    $attemptsNow  = (int) $job['attempts'] + 1;
+    $newStatus    = $attemptsNow >= (int) $job['max_attempts'] ? 'failed' : 'pending';
 
-    // Check if we've hit max attempts
-    $attemptsNow = (int) $job['attempts'] + 1;
-    $newStatus   = $attemptsNow >= (int) $job['max_attempts'] ? 'failed' : 'pending';
+    // Exponential backoff: 1min, 5min, 15min
+    $backoffSeconds = match ($attemptsNow) {
+      1       => 60,
+      2       => 300,
+      default => 900,
+    };
+    $retryAt = date('Y-m-d H:i:s', strtotime("+{$backoffSeconds} seconds"));
 
-    // If retrying, wait 60 seconds before next attempt
-    $retryAt = date('Y-m-d H:i:s', strtotime('+60 seconds'));
+    echo "[" . date('Y-m-d H:i:s') . "] ✗ Job #{$jobId} failed (attempt {$attemptsNow}): {$error}\n";
 
     $db->prepare("
             UPDATE jobs
@@ -131,7 +172,8 @@ foreach ($jobs as $job) {
         ")->execute([$newStatus, $error, $newStatus, $retryAt, $jobId]);
   }
 
-  sleep(3);
+  // Small delay between jobs to avoid overwhelming services
+  sleep(2);
 }
 
 echo "[" . date('Y-m-d H:i:s') . "] Worker finished.\n";
