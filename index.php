@@ -43,6 +43,7 @@ require_once __DIR__ . '/services/QueueService.php';
 require_once __DIR__ . '/services/NotificationService.php';
 require_once __DIR__ . '/services/TransactionService.php';
 require_once __DIR__ . '/services/PayoutService.php';
+require_once __DIR__ . '/services/PDFService.php';
 
 require_once __DIR__ . '/middleware/AuthMiddleware.php';
 require_once __DIR__ . '/middleware/RoleMiddleware.php';
@@ -61,6 +62,7 @@ require_once __DIR__ . '/controllers/NotificationController.php';
 require_once __DIR__ . '/controllers/TransactionController.php';
 require_once __DIR__ . '/controllers/PayoutController.php';
 require_once __DIR__ . '/controllers/OrganizerPaymentController.php';
+require_once __DIR__ . '/controllers/PDFController.php';
 
 // ============================================================
 // 3. BOOTSTRAP
@@ -90,6 +92,7 @@ require_once __DIR__ . '/routes/profile.php';
 require_once __DIR__ . '/routes/events.php';
 require_once __DIR__ . '/routes/bookings.php';
 require_once __DIR__ . '/routes/tickets.php';
+require_once __DIR__ . '/routes/ticket_pdf.php';
 require_once __DIR__ . '/routes/categories.php';
 require_once __DIR__ . '/routes/organizer_applications.php';
 require_once __DIR__ . '/routes/admin.php';
