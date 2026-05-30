@@ -111,6 +111,7 @@ class PDFService
       ->setNodeBinary($nodePath)
       ->setNpmBinary($npmPath)
       ->noSandbox()                   // Required in Docker
+      ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage'])
       ->format('A4')
       ->margins(15, 15, 15, 15)       // top, right, bottom, left in mm
       ->showBackground()
