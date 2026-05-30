@@ -37,7 +37,7 @@ class ProfileController
     // Booking stats — exclude soft-deleted bookings
     $stmt = $this->db->prepare("
             SELECT
-                COUNT(*)                                                                AS total_bookings,
+                COUNT(*)                                                               AS total_bookings,
                 SUM(CASE WHEN payment_status = 'paid'    THEN 1    ELSE 0 END)         AS paid_bookings,
                 SUM(CASE WHEN payment_status = 'pending' THEN 1    ELSE 0 END)         AS pending_bookings,
                 SUM(CASE WHEN payment_status = 'paid'    THEN total_amount ELSE 0 END) AS total_spent
@@ -387,6 +387,7 @@ class ProfileController
     $stmt = $this->db->prepare("
             SELECT
                 t.id,
+                t.qr_token,
                 t.is_used,
                 t.used_at,
                 t.created_at,
@@ -404,8 +405,16 @@ class ProfileController
             ORDER BY e.start_date ASC
         ");
     $stmt->execute($params);
+    $tickets = $stmt->fetchAll();
 
-    Response::success(['tickets' => $stmt->fetchAll()]);
+    foreach ($tickets as &$ticket) {
+      QRCodeService::generate($ticket['qr_token']);
+      $ticket['qr_code_url'] = QRCodeService::getUrl($ticket['qr_token']);
+      $ticket['status'] = $ticket['is_used'] ? 'used' : 'valid';
+      unset($ticket['qr_token']);
+    }
+
+    Response::success(['tickets' => $tickets]);
   }
 
   // ============================================================
