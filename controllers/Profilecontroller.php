@@ -388,6 +388,7 @@ class ProfileController
             SELECT
                 t.id,
                 t.qr_token,
+                t.booking_id,
                 t.is_used,
                 t.used_at,
                 t.created_at,
