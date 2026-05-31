@@ -110,27 +110,27 @@ CREATE TABLE IF NOT EXISTS `email_verifications` (
 -- ADDED:   deleted_at, status 'deleted'
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `events` (
-  `id`            int(10) UNSIGNED NOT NULL AUTO_INCREMENT,
-  `organizer_id`  int(10) UNSIGNED NOT NULL,
-  `category_id`   int(10) UNSIGNED DEFAULT NULL,
-  `title`         varchar(255) NOT NULL,
-  `slug`          varchar(255) NOT NULL,
-  `description`   text         DEFAULT NULL,
-  `location`      varchar(255) DEFAULT NULL,
-  `banner_image`  varchar(255) DEFAULT NULL,
-  `start_date`    datetime     NOT NULL,
-  `end_date`      datetime     NOT NULL,
-  `total_tickets` int(10) UNSIGNED NOT NULL,   -- organizer sets this on creation; NOT 0
-  `status`        enum('draft','published','cancelled','completed','deleted') NOT NULL DEFAULT 'draft',
-  `deleted_at`    datetime     DEFAULT NULL,
-  `created_at`    datetime     DEFAULT current_timestamp(),
-  `updated_at`    datetime     DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `id`                int(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `organizer_id`      int(10) UNSIGNED NOT NULL,
+  `category_id`       int(10) UNSIGNED DEFAULT NULL,
+  `title`             varchar(255) NOT NULL,
+  `slug`              varchar(255) NOT NULL,
+  `description`       text         DEFAULT NULL,
+  `location`          varchar(255) DEFAULT NULL,
+  `banner_image`      varchar(255) DEFAULT NULL,
+  `banner_public_id`  varchar(255) DEFAULT NULL,
+  `start_date`        datetime     NOT NULL,
+  `end_date`          datetime     NOT NULL,
+  `total_tickets`     int(10) UNSIGNED NOT NULL,   -- organizer sets this on creation; NOT 0
+  `status`            enum('draft','published','cancelled','completed','deleted') NOT NULL DEFAULT 'draft',
+  `deleted_at`        datetime     DEFAULT NULL,
+  `created_at`        datetime     DEFAULT current_timestamp(),
+  `updated_at`        datetime     DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `slug` (`slug`),
   KEY `organizer_id` (`organizer_id`),
   KEY `category_id`  (`category_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 
 CREATE TABLE IF NOT EXISTS `jobs` (
   `id`           int(10) UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -223,8 +223,6 @@ CREATE TABLE IF NOT EXISTS `ticket_types` (
 --  Run this entire file once in phpMyAdmin against your DB
 --  Order matters — do not rearrange the tables
 -- ============================================================
-
-USE event_ticketing; -- change to ticketer_db if on v2 schema
 
 
 -- ============================================================
@@ -377,6 +375,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `email_verified`         tinyint(1)   DEFAULT 0,
   `email_verified_at`      datetime     DEFAULT NULL,
   `avatar`                 varchar(255) DEFAULT NULL,
+  `avatar_public_id`       varchar(255) DEFAULT NULL,
   `is_active`              tinyint(1)   DEFAULT 1,
   `created_at`             datetime     DEFAULT current_timestamp(),
   `updated_at`             datetime     DEFAULT current_timestamp() ON UPDATE current_timestamp(),
