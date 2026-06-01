@@ -44,6 +44,7 @@ require_once __DIR__ . '/services/NotificationService.php';
 require_once __DIR__ . '/services/TransactionService.php';
 require_once __DIR__ . '/services/PayoutService.php';
 require_once __DIR__ . '/services/PDFService.php';
+require_once __DIR__ . '/services/CloudinaryService.php';
 
 require_once __DIR__ . '/middleware/AuthMiddleware.php';
 require_once __DIR__ . '/middleware/RoleMiddleware.php';
@@ -63,6 +64,7 @@ require_once __DIR__ . '/controllers/TransactionController.php';
 require_once __DIR__ . '/controllers/PayoutController.php';
 require_once __DIR__ . '/controllers/OrganizerPaymentController.php';
 require_once __DIR__ . '/controllers/PDFController.php';
+require_once __DIR__ . '/controllers/CloudinaryController.php';
 
 // ============================================================
 // 3. BOOTSTRAP
@@ -100,6 +102,7 @@ require_once __DIR__ . '/routes/notifications.php';
 require_once __DIR__ . '/routes/transactions.php';
 require_once __DIR__ . '/routes/organizer_payment.php';
 require_once __DIR__ . '/routes/payouts.php';
+require_once __DIR__ . '/routes/cloudinary.php';
 require_once __DIR__ . '/routes/dev.php';
 
 // ============================================================
