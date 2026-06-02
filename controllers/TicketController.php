@@ -24,7 +24,8 @@ class TicketController
 
     $stmt = $this->db->prepare("
             SELECT
-                t.id,
+                t.id ,
+                t.booking_id,
                 t.qr_token,
                 t.is_used,
                 t.used_at,
@@ -74,7 +75,8 @@ class TicketController
     // Generate QR code image and attach public URL
     QRCodeService::generate($ticket['qr_token']);
     $ticket['qr_code_url'] = QRCodeService::getUrl($ticket['qr_token']);
-
+    $ticket['status'] = $ticket['is_used'] ? 'used' : 'valid';
+    
     // Don't expose the raw token — React only needs the image URL
     unset($ticket['qr_token']);
 
@@ -137,6 +139,7 @@ class TicketController
     foreach ($tickets as &$ticket) {
       QRCodeService::generate($ticket['qr_token']);
       $ticket['qr_code_url'] = QRCodeService::getUrl($ticket['qr_token']);
+      $ticket['status'] = $ticket['is_used'] ? 'used' : 'valid';
       unset($ticket['qr_token']);
     }
 
@@ -217,6 +220,7 @@ class TicketController
       'attendee_name' => $ticket['attendee_name'],
       'ticket_type'   => $ticket['ticket_type'],
       'event_title'   => $ticket['event_title'],
+      'status'        => $ticket['status'],
       'checked_in_at' => date('d M Y, g:ia'),
     ], 'Valid ticket. Attendee checked in successfully.');
   }
