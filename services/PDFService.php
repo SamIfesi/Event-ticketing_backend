@@ -1,16 +1,20 @@
 <?php
+
 /**
  * PDFService
  *
  * Generates PDF tickets for paid bookings using
  * Spatie Browsershot (which wraps Puppeteer/Chromium).
  *
+ * One PDF is generated per ticket (not per booking).
+ * So if a user bought 3 tickets, 3 PDFs are generated.
+ *
  * Flow:
- *   1. Fetch booking + event + attendee data from DB
- *   2. Render HTML ticket template with that data
+ *   1. Fetch booking + event + ticket data from DB
+ *   2. Render HTML ticket template for each ticket
  *   3. Browsershot converts HTML → PDF
- *   4. Store in storage/tickets/ticket_booking_{id}.pdf
- *   5. Return the file path
+ *   4. Store in storage/tickets/ticket_{ticketId}.pdf
+ *   5. Return array of file paths
  *
  * Requirements (handled by Dockerfile):
  *   - composer require spatie/browsershot
@@ -25,53 +29,53 @@ class PDFService
   private static string $storageDir = __DIR__ . '/../storage/tickets/';
 
   // ============================================================
-  // Generate a ticket PDF for a booking.
-  // Returns the absolute file path on success.
+  // Generate one PDF ticket per ticket row under a booking.
+  // Returns an array of absolute file paths.
   // Throws on failure.
   // ============================================================
-  public static function generateTicket(int $bookingId): string
+  public static function generateTicket(int $bookingId): array
   {
     $db = Database::connect();
 
-    // ── Fetch all data needed for the ticket ─────────────
+    // ── Fetch booking + event + attendee data ─────────────
     $stmt = $db->prepare("
             SELECT
-                b.id                    AS booking_id,
+                b.id                AS booking_id,
                 b.quantity,
                 b.unit_price,
                 b.total_amount,
                 b.payment_status,
                 b.paystack_reference,
                 b.paid_at,
-                b.created_at            AS booked_at,
+                b.created_at        AS booked_at,
 
-                e.id                    AS event_id,
-                e.title                 AS event_title,
-                e.location              AS event_location,
-                e.start_date            AS event_start_date,
-                e.end_date              AS event_end_date,
-                e.banner_image          AS event_banner,
+                e.id                AS event_id,
+                e.title             AS event_title,
+                e.location          AS event_location,
+                e.start_date        AS event_start_date,
+                e.end_date          AS event_end_date,
+                e.banner_image      AS event_banner,
 
-                tt.name                 AS ticket_type,
-                tt.price                AS ticket_price,
+                tt.name             AS ticket_type,
+                tt.price            AS ticket_price,
 
-                u.id                    AS user_id,
-                u.name                  AS attendee_name,
-                u.email                 AS attendee_email,
+                u.id                AS user_id,
+                u.name              AS attendee_name,
+                u.email             AS attendee_email,
 
-                org.name                AS organizer_name,
+                org.name            AS organizer_name,
                 org.email               AS organizer_email,
 
-                c.name                  AS category_name
+                c.name              AS category_name
             FROM bookings b
-            JOIN events       e   ON e.id  = b.event_id
-            JOIN ticket_types tt  ON tt.id = b.ticket_type_id
-            JOIN users        u   ON u.id  = b.user_id
+            JOIN events       e   ON e.id   = b.event_id
+            JOIN ticket_types tt  ON tt.id  = b.ticket_type_id
+            JOIN users        u   ON u.id   = b.user_id
             JOIN users        org ON org.id = e.organizer_id
-            LEFT JOIN categories c ON c.id = e.category_id
-            WHERE b.id = ?
+            LEFT JOIN categories c ON c.id  = e.category_id
+            WHERE b.id             = ?
               AND b.payment_status = 'paid'
-              AND b.deleted_at IS NULL
+              AND b.deleted_at     IS NULL
         ");
     $stmt->execute([$bookingId]);
     $booking = $stmt->fetch();
@@ -80,9 +84,9 @@ class PDFService
       throw new Exception("Booking #{$bookingId} not found or not paid.");
     }
 
-    // ── Fetch the individual tickets for this booking ──────
+    // ── Fetch individual tickets ──────────────────────────
     $stmt = $db->prepare("
-            SELECT id, qr_token, is_used, used_at, created_at
+            SELECT id, qr_token, is_used, used_at
             FROM tickets
             WHERE booking_id = ?
               AND deleted_at IS NULL
@@ -91,440 +95,461 @@ class PDFService
     $stmt->execute([$bookingId]);
     $tickets = $stmt->fetchAll();
 
+    if (empty($tickets)) {
+      throw new Exception("No tickets found for booking #{$bookingId}.");
+    }
+
     // ── Ensure storage directory exists ───────────────────
     if (!is_dir(self::$storageDir)) {
       mkdir(self::$storageDir, 0755, true);
     }
 
-    $filePath = self::$storageDir . "ticket_booking_{$bookingId}.pdf";
-
-    // ── Render HTML template ───────────────────────────────
-    $html = self::renderTemplate($booking, $tickets);
-
-    // ── Generate PDF via Browsershot ───────────────────────
+    // ── Browsershot config ────────────────────────────────
     $chromiumPath = Environment::get('CHROMIUM_PATH', '/usr/bin/chromium');
-    $nodePath     = Environment::get('NODE_PATH', '/usr/bin/node');
-    $npmPath      = Environment::get('NPM_PATH', '/usr/bin/npm');
+    $nodePath     = Environment::get('NODE_PATH',     '/usr/bin/node');
+    $npmPath      = Environment::get('NPM_PATH',      '/usr/bin/npm');
 
-    Browsershot::html($html)
-      ->setChromePath($chromiumPath)
-      ->setNodeBinary($nodePath)
-      ->setNpmBinary($npmPath)
-      ->noSandbox()                   // Required in Docker
-      ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage'])
-      ->format('A4')
-      ->margins(15, 15, 15, 15)       // top, right, bottom, left in mm
-      ->showBackground()
-      ->waitUntilNetworkIdle()
-      ->save($filePath);
+    $filePaths = [];
 
-    return $filePath;
+    // ── Generate one PDF per ticket ───────────────────────
+    foreach ($tickets as $ticket) {
+      $ticketId = (int) $ticket['id'];
+      $filePath = self::$storageDir . "ticket_{$ticketId}.pdf";
+
+      // Skip if already generated
+      if (file_exists($filePath)) {
+        $filePaths[] = $filePath;
+        continue;
+      }
+
+      $html = self::renderTemplate($booking, $ticket);
+
+      Browsershot::html($html)
+        ->setChromePath($chromiumPath)
+        ->setNodeBinary($nodePath)
+        ->setNpmBinary($npmPath)
+        ->noSandbox()                   // Required in Docker
+        ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage'])
+        ->paperSize(390, 780)   // portrait mobile width in points
+        ->margins(0, 0, 0, 0)
+        ->showBackground()
+        ->waitUntilNetworkIdle()
+        ->save($filePath);
+
+      $filePaths[] = $filePath;
+    }
+
+    return $filePaths;
   }
 
   // ============================================================
-  // Check if a ticket already exists for a booking.
-  // Used to avoid regenerating on every download request.
+  // Check if ALL tickets under a booking have been generated.
   // ============================================================
   public static function ticketExists(int $bookingId): bool
   {
-    $filePath = self::$storageDir . "ticket_booking_{$bookingId}.pdf";
-    return file_exists($filePath);
+    $db   = Database::connect();
+    $stmt = $db->prepare("
+            SELECT id FROM tickets
+            WHERE booking_id = ? AND deleted_at IS NULL
+        ");
+    $stmt->execute([$bookingId]);
+    $tickets = $stmt->fetchAll();
+
+    if (empty($tickets)) return false;
+
+    foreach ($tickets as $ticket) {
+      $path = self::$storageDir . "ticket_{$ticket['id']}.pdf";
+      if (!file_exists($path)) return false;
+    }
+
+    return true;
   }
 
   // ============================================================
-  // Get the file path for an existing ticket.
-  // Does NOT check if the file exists — call ticketExists() first.
+  // Get path for a single ticket PDF.
   // ============================================================
-  public static function getTicketPath(int $bookingId): string
+  public static function getTicketPath(int $ticketId): string
   {
-    return self::$storageDir . "ticket_booking_{$bookingId}.pdf";
+    return self::$storageDir . "ticket_{$ticketId}.pdf";
   }
 
   // ============================================================
-  // Delete a cached ticket (e.g. after refund).
+  // Get all ticket PDF paths for a booking.
+  // ============================================================
+  public static function getReceiptPath(int $bookingId): string
+  {
+    // For single-ticket bookings — returns the first ticket path.
+    // For multi-ticket, use getTicketPaths().
+    $db   = Database::connect();
+    $stmt = $db->prepare("
+            SELECT id FROM tickets
+            WHERE booking_id = ? AND deleted_at IS NULL
+            ORDER BY id ASC LIMIT 1
+        ");
+    $stmt->execute([$bookingId]);
+    $ticket = $stmt->fetch();
+
+    if (!$ticket) {
+      throw new Exception("No tickets found for booking #{$bookingId}.");
+    }
+
+    return self::$storageDir . "ticket_{$ticket['id']}.pdf";
+  }
+
+  // ============================================================
+  // Get all PDF paths for a booking (multi-ticket).
+  // ============================================================
+  public static function getTicketPaths(int $bookingId): array
+  {
+    $db   = Database::connect();
+    $stmt = $db->prepare("
+            SELECT id FROM tickets
+            WHERE booking_id = ? AND deleted_at IS NULL
+            ORDER BY id ASC
+        ");
+    $stmt->execute([$bookingId]);
+    $tickets = $stmt->fetchAll();
+
+    return array_map(
+      fn($t) => self::$storageDir . "ticket_{$t['id']}.pdf",
+      $tickets
+    );
+  }
+
+  // ============================================================
+  // Delete all cached ticket PDFs for a booking.
   // ============================================================
   public static function deleteTicket(int $bookingId): void
   {
-    $filePath = self::$storageDir . "ticket_booking_{$bookingId}.pdf";
-    if (file_exists($filePath)) {
-      unlink($filePath);
+    $db   = Database::connect();
+    $stmt = $db->prepare("
+            SELECT id FROM tickets WHERE booking_id = ? AND deleted_at IS NULL
+        ");
+    $stmt->execute([$bookingId]);
+    $tickets = $stmt->fetchAll();
+
+    foreach ($tickets as $ticket) {
+      $path = self::$storageDir . "ticket_{$ticket['id']}.pdf";
+      if (file_exists($path)) {
+        unlink($path);
+      }
     }
   }
 
   // ============================================================
-  // Get the public URL for a ticket.
+  // Public URL for a single ticket PDF.
   // ============================================================
   public static function getTicketUrl(int $bookingId): string
   {
+    $db   = Database::connect();
+    $stmt = $db->prepare("
+            SELECT id FROM tickets
+            WHERE booking_id = ? AND deleted_at IS NULL
+            ORDER BY id ASC LIMIT 1
+        ");
+    $stmt->execute([$bookingId]);
+    $ticket = $stmt->fetch();
+
+    if (!$ticket) return '';
+
     $appUrl = Environment::get('APP_URL', 'http://localhost');
-    return "{$appUrl}/storage/tickets/ticket_booking_{$bookingId}.pdf";
+    return "{$appUrl}/storage/tickets/ticket_{$ticket['id']}.pdf";
   }
 
   // ============================================================
-  // Render the HTML ticket template.
-  // Kept in-class for portability — no external template engine needed.
+  // Render the ticket HTML — matches the signature design exactly.
+  // One call per ticket row.
   // ============================================================
-  private static function renderTemplate(array $booking, array $tickets): string
+  private static function renderTemplate(array $booking, array $ticket): string
   {
-    $appName      = Environment::get('APP_NAME', 'Ticketer');
-    $appUrl       = Environment::get('APP_URL', 'http://localhost');
+    $appName   = Environment::get('APP_NAME', 'Ticketer');
+    $appUrl    = Environment::get('APP_URL',  'http://localhost');
 
-    // Format values
-    $totalFormatted   = '₦' . number_format((float) $booking['total_amount'], 2);
-    $unitFormatted    = '₦' . number_format((float) $booking['unit_price'], 2);
-    $paidAt           = $booking['paid_at']
-      ? date('d M Y \a\t g:ia', strtotime($booking['paid_at']))
-      : 'N/A';
-    $eventDate        = $booking['event_start_date']
-      ? date('D, d M Y', strtotime($booking['event_start_date']))
+    // ── Format values ─────────────────────────────────────
+    $ticketIdPadded = str_pad($ticket['id'], 6, '0', STR_PAD_LEFT);
+    $amount         = (float) $booking['unit_price'] === 0.0
+      ? 'Free'
+      : '₦' . number_format((float) $booking['unit_price'], 0);
+
+    $eventDate = $booking['event_start_date']
+      ? date('d M Y', strtotime($booking['event_start_date']))
       : 'TBC';
-    $eventTime        = $booking['event_start_date']
-      ? date('g:ia', strtotime($booking['event_start_date']))
+    $eventTime = $booking['event_start_date']
+      ? date('g:i a', strtotime($booking['event_start_date']))
       : '';
-    $eventEndTime     = $booking['event_end_date']
-      ? date('g:ia', strtotime($booking['event_end_date']))
-      : '';
-    $bookingRef       = strtoupper(substr($booking['paystack_reference'] ?? "BK{$booking['booking_id']}", 0, 20));
-    $bookingIdPadded  = str_pad($booking['booking_id'], 6, '0', STR_PAD_LEFT);
+    $dateTime  = $eventDate . ' · ' . $eventTime;
 
-    // Ticket rows
-    $ticketRowsHtml = '';
-    foreach ($tickets as $index => $ticket) {
-      $ticketNum    = $index + 1;
-      $ticketId     = str_pad($ticket['id'], 8, '0', STR_PAD_LEFT);
-      $status       = $ticket['is_used'] ? 'Used' : 'Valid';
-      $statusColor  = $ticket['is_used'] ? '#94a3b8' : '#22c55e';
-      $ticketRowsHtml .= "
-                <tr>
-                    <td style='padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #1e293b;'>#{$ticketNum}</td>
-                    <td style='padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; font-family: monospace; color: #475569;'>#{$ticketId}</td>
-                    <td style='padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #1e293b;'>{$booking['ticket_type']}</td>
-                    <td style='padding: 10px 12px; border-bottom: 1px solid #e2e8f0;'>
-                        <span style='
-                            display: inline-block;
-                            padding: 3px 10px;
-                            border-radius: 999px;
-                            font-size: 11px;
-                            font-weight: 700;
-                            background: {$statusColor}18;
-                            color: {$statusColor};
-                        '>{$status}</span>
-                    </td>
-                    <td style='padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #475569;'>{$unitFormatted}</td>
-                </tr>
-            ";
+    $venue        = htmlspecialchars($booking['event_location'] ?? 'TBC');
+    $ticketType   = htmlspecialchars($booking['ticket_type']);
+    $holderName   = htmlspecialchars($booking['attendee_name']);
+    $eventTitle   = htmlspecialchars($booking['event_title']);
+
+    // ── Ticket status ─────────────────────────────────────
+    $isUsed      = (bool) $ticket['is_used'];
+    $statusLabel = $isUsed ? 'Used'  : 'Valid';
+    $statusColor = $isUsed ? '#94a3b8' : '#22c55e';
+
+    // ── QR code image ─────────────────────────────────────
+    $qrToken = $ticket['qr_token'] ?? '';
+    $qrUrl   = $qrToken
+      ? "{$appUrl}/storage/qrcodes/{$qrToken}.svg"
+      : '';
+
+    $qrHtml = $qrUrl
+      ? "<img src='{$qrUrl}' alt='QR Code' style='width:200px;height:200px;display:block;margin:0 auto;' />"
+      : "<div style='width:200px;height:200px;margin:0 auto;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;'>
+                 <svg width='60' height='60' viewBox='0 0 24 24' fill='none' stroke='#94a3b8' stroke-width='1.5'>
+                   <rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/>
+                   <rect x='3' y='14' width='7' height='7'/><rect x='14' y='14' width='3' height='3'/>
+                   <rect x='18' y='14' width='3' height='3'/><rect x='14' y='18' width='3' height='3'/>
+                   <rect x='18' y='18' width='3' height='3'/>
+                 </svg>
+               </div>";
+
+    return "<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>Ticket #{$ticketIdPadded}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: #e8eaf2;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 24px 16px;
     }
 
-    // QR code URL for ticket (server-side public path)
-    $qrCodeSectionHtml = '';
-    if (count($tickets) === 1) {
-      $qrToken = $tickets[0]['qr_token'] ?? null;
-      if ($qrToken) {
-        $qrUrl = "{$appUrl}/storage/qrcodes/{$qrToken}.svg";
-        $qrCodeSectionHtml = "
-                    <div style='text-align: center; margin: 24px 0;'>
-                        <p style='font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;'>Your Entry QR Code</p>
-                        <img src='{$qrUrl}' alt='QR Code' style='width: 140px; height: 140px;' />
-                        <p style='font-size: 10px; font-family: monospace; color: #94a3b8; margin-top: 6px;'>{$qrToken}</p>
-                    </div>
-                ";
-      }
+    .ticket {
+      width: 420px;
+      background: #ffffff;
+      border-radius: 24px;
+      overflow: visible;
+      position: relative;
     }
 
-    return "
-        <!DOCTYPE html>
-        <html lang='en'>
-        <head>
-            <meta charset='UTF-8'>
-            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-            <title>Ticket — Booking #{$bookingIdPadded}</title>
-            <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body {
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                    background: #ffffff;
-                    color: #1e293b;
-                    font-size: 14px;
-                    line-height: 1.5;
-                }
-                .page {
-                    max-width: 700px;
-                    margin: 0 auto;
-                    padding: 40px 40px 60px;
-                }
-                .header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: flex-start;
-                    margin-bottom: 36px;
-                    padding-bottom: 24px;
-                    border-bottom: 2px solid #2563eb;
-                }
-                .brand-name {
-                    font-size: 26px;
-                    font-weight: 900;
-                    color: #2563eb;
-                    letter-spacing: -0.02em;
-                }
-                .brand-tagline {
-                    font-size: 11px;
-                    color: #94a3b8;
-                    margin-top: 2px;
-                }
-                .ticket-meta {
-                    text-align: right;
-                }
-                .ticket-title {
-                    font-size: 18px;
-                    font-weight: 800;
-                    color: #1e293b;
-                }
-                .ticket-subtitle {
-                    font-size: 12px;
-                    color: #94a3b8;
-                    margin-top: 2px;
-                }
-                .status-badge {
-                    display: inline-block;
-                    padding: 4px 12px;
-                    border-radius: 999px;
-                    font-size: 11px;
-                    font-weight: 700;
-                    background: #dcfce7;
-                    color: #16a34a;
-                    margin-top: 6px;
-                    text-transform: uppercase;
-                    letter-spacing: 0.05em;
-                }
-                .section {
-                    margin-bottom: 28px;
-                }
-                .section-title {
-                    font-size: 10px;
-                    font-weight: 700;
-                    color: #94a3b8;
-                    text-transform: uppercase;
-                    letter-spacing: 0.12em;
-                    margin-bottom: 12px;
-                }
-                .info-grid {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 0;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 10px;
-                    overflow: hidden;
-                }
-                .info-cell {
-                    padding: 14px 16px;
-                    border-bottom: 1px solid #e2e8f0;
-                    border-right: 1px solid #e2e8f0;
-                }
-                .info-cell:nth-child(even) { border-right: none; }
-                .info-cell:nth-last-child(-n+2) { border-bottom: none; }
-                .info-label {
-                    font-size: 10px;
-                    font-weight: 700;
-                    color: #94a3b8;
-                    text-transform: uppercase;
-                    letter-spacing: 0.08em;
-                    margin-bottom: 3px;
-                }
-                .info-value {
-                    font-size: 13px;
-                    font-weight: 600;
-                    color: #1e293b;
-                }
-                .event-card {
-                    background: #eff6ff;
-                    border: 1px solid #bfdbfe;
-                    border-radius: 10px;
-                    padding: 18px 20px;
-                }
-                .event-title {
-                    font-size: 17px;
-                    font-weight: 800;
-                    color: #1e3a8a;
-                    margin-bottom: 10px;
-                }
-                .event-detail {
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    font-size: 12px;
-                    color: #3b82f6;
-                    margin-bottom: 5px;
-                }
-                .tickets-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 10px;
-                    overflow: hidden;
-                }
-                .tickets-table thead tr {
-                    background: #f8fafc;
-                }
-                .tickets-table thead th {
-                    padding: 10px 12px;
-                    text-align: left;
-                    font-size: 10px;
-                    font-weight: 700;
-                    color: #94a3b8;
-                    text-transform: uppercase;
-                    letter-spacing: 0.08em;
-                    border-bottom: 1px solid #e2e8f0;
-                }
-                .total-row {
-                    background: #1e293b;
-                    border-radius: 10px;
-                    padding: 16px 20px;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-top: 12px;
-                }
-                .total-label {
-                    font-size: 13px;
-                    font-weight: 600;
-                    color: #94a3b8;
-                }
-                .total-amount {
-                    font-size: 22px;
-                    font-weight: 900;
-                    color: #ffffff;
-                }
-                .footer {
-                    margin-top: 40px;
-                    padding-top: 20px;
-                    border-top: 1px solid #e2e8f0;
-                    text-align: center;
-                }
-                .footer-text {
-                    font-size: 11px;
-                    color: #94a3b8;
-                    line-height: 1.6;
-                }
-                .divider {
-                    border: none;
-                    border-top: 1px dashed #e2e8f0;
-                    margin: 24px 0;
-                }
-                @media print {
-                    body { -webkit-print-color-adjust: exact; }
-                }
-            </style>
-        </head>
-        <body>
-        <div class='page'>
+    /* ── Hero header ── */
+    .hero {
+      background: #eef0f7;
+      border-radius: 24px 24px 0 0;
+      padding: 36px 24px 28px;
+      text-align: center;
+    }
+    .hero-emoji {
+      font-size: 48px;
+      line-height: 1;
+      margin-bottom: 14px;
+    }
+    .hero-title {
+      font-size: 21px;
+      font-weight: 700;
+      color: #1a1f36;
+      margin-bottom: 6px;
+      letter-spacing: -0.01em;
+    }
+    .hero-subtitle {
+      font-size: 13px;
+      color: #8c93a8;
+    }
 
-            <!-- ── Header ── -->
-            <div class='header'>
-                <div>
-                    <div class='brand-name'>{$appName}</div>
-                    <div class='brand-tagline'>Nigeria's Event Ticketing Platform</div>
-                </div>
-                <div class='ticket-meta'>
-                    <div class='ticket-title'>Payment ticket</div>
-                    <div class='ticket-subtitle'>Booking #{$bookingIdPadded}</div>
-                    <div class='status-badge'>✓ Paid</div>
-                </div>
-            </div>
+    /* ── Perforation ── */
+    .perf {
+      position: relative;
+      height: 0;
+      display: flex;
+      align-items: center;
+      overflow: visible;
+      z-index: 2;
+      margin: 0;
+    }
+    .perf-circle {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #e8eaf2;
+      flex-shrink: 0;
+    }
+    .perf-circle-left  { margin-left: -12px; }
+    .perf-circle-right { margin-right: -12px; }
+    .perf-line {
+      flex: 1;
+      border-top: 2px dashed #cdd0db;
+      margin: 0 6px;
+    }
 
-            <!-- ── Booking Summary ── -->
-            <div class='section'>
-                <div class='section-title'>Booking Summary</div>
-                <div class='info-grid'>
-                    <div class='info-cell'>
-                        <div class='info-label'>Booking Reference</div>
-                        <div class='info-value' style='font-family: monospace; font-size: 12px;'>{$bookingRef}</div>
-                    </div>
-                    <div class='info-cell'>
-                        <div class='info-label'>Payment Date</div>
-                        <div class='info-value'>{$paidAt}</div>
-                    </div>
-                    <div class='info-cell'>
-                        <div class='info-label'>Attendee</div>
-                        <div class='info-value'>{$booking['attendee_name']}</div>
-                    </div>
-                    <div class='info-cell'>
-                        <div class='info-label'>Email</div>
-                        <div class='info-value' style='font-size: 12px;'>{$booking['attendee_email']}</div>
-                    </div>
-                </div>
-            </div>
+    /* ── Ticket body ── */
+    .body {
+      padding: 28px 24px 0;
+    }
 
-            <!-- ── Event Details ── -->
-            <div class='section'>
-                <div class='section-title'>Event Details</div>
-                <div class='event-card'>
-                    <div class='event-title'>{$booking['event_title']}</div>
-                    <div class='event-detail'>
-                        <span>📅</span>
-                        <span>{$eventDate} · {$eventTime}" . ($eventEndTime ? " – {$eventEndTime}" : "") . "</span>
-                    </div>
-                    " . ($booking['event_location'] ? "
-                    <div class='event-detail'>
-                        <span>📍</span>
-                        <span>{$booking['event_location']}</span>
-                    </div>" : "") . "
-                    <div class='event-detail'>
-                        <span>🎫</span>
-                        <span>{$booking['ticket_type']} · {$booking['quantity']} ticket(s)</span>
-                    </div>
-                    <div class='event-detail'>
-                        <span>🎤</span>
-                        <span>Organised by {$booking['organizer_name']}</span>
-                    </div>
-                </div>
-            </div>
+    .field-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: #8c93a8;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 5px;
+    }
+    .field-value {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1a1f36;
+      line-height: 1.3;
+    }
 
-            <!-- ── Ticket Breakdown ── -->
-            <div class='section'>
-                <div class='section-title'>Ticket Breakdown</div>
-                <table class='tickets-table'>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Ticket ID</th>
-                            <th>Type</th>
-                            <th>Status</th>
-                            <th>Price</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {$ticketRowsHtml}
-                    </tbody>
-                </table>
+    .row-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      margin-bottom: 22px;
+    }
+    .row-1col {
+      margin-bottom: 22px;
+    }
 
-                <!-- Total -->
-                <div class='total-row'>
-                    <div>
-                        <div class='total-label'>Total Paid</div>
-                        <div style='font-size: 11px; color: #475569; margin-top: 2px;'>{$booking['quantity']} × {$unitFormatted}</div>
-                    </div>
-                    <div class='total-amount'>{$totalFormatted}</div>
-                </div>
-            </div>
+    /* ── QR section ── */
+    .qr-section {
+      padding: 4px 24px 28px;
+      text-align: center;
+    }
+    .qr-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: #8c93a8;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 16px;
+    }
+    .qr-box {
+      width: 200px;
+      height: 200px;
+      margin: 0 auto 20px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 999px;
+      padding: 7px 20px;
+      margin-bottom: 20px;
+    }
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: {$statusColor};
+      flex-shrink: 0;
+    }
+    .status-text {
+      font-size: 13px;
+      color: #64748b;
+    }
+    .issued-by {
+      font-size: 12px;
+      color: #b0b6c8;
+    }
 
-            <hr class='divider'>
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+<div class='ticket'>
 
-            <!-- ── QR Code (single ticket only) ── -->
-            {$qrCodeSectionHtml}
+  <!-- Hero -->
+  <div class='hero'>
+    <div class='hero-emoji'>🎉</div>
+    <div class='hero-title'>Your ticket is ready!</div>
+    <div class='hero-subtitle'>{$eventTitle}</div>
+  </div>
 
-            <!-- ── Footer ── -->
-            <div class='footer'>
-                <div class='footer-text'>
-                    This is an official payment ticket from {$appName}.<br>
-                    Keep this ticket for your records. Show your QR code at the event entrance.<br>
-                    Questions? Contact us at support@ticketer.ng<br><br>
-                    <strong>{$appName}</strong> · Nigeria's Event Ticketing Platform · {$appUrl}
-                </div>
-            </div>
+  <!-- Top perforation -->
+  <div class='perf' style='margin-top: 0;'>
+    <div class='perf-circle perf-circle-left'></div>
+    <div class='perf-line'></div>
+    <div class='perf-circle perf-circle-right'></div>
+  </div>
 
-        </div>
-        </body>
-        </html>
-        ";
+  <!-- Body fields -->
+  <div class='body'>
+
+    <!-- Ticket ID + Amount -->
+    <div class='row-2col'>
+      <div>
+        <div class='field-label'>Ticket ID</div>
+        <div class='field-value'>#{$ticketIdPadded}</div>
+      </div>
+      <div style='text-align: right;'>
+        <div class='field-label'>Amount</div>
+        <div class='field-value'>{$amount}</div>
+      </div>
+    </div>
+
+    <!-- Date & Time -->
+    <div class='row-1col'>
+      <div class='field-label'>Date &amp; Time</div>
+      <div class='field-value'>{$dateTime}</div>
+    </div>
+
+    <!-- Venue -->
+    <div class='row-1col'>
+      <div class='field-label'>Venue</div>
+      <div class='field-value'>{$venue}</div>
+    </div>
+
+    <!-- Ticket Type + Holder -->
+    <div class='row-2col' style='margin-bottom: 0;'>
+      <div>
+        <div class='field-label'>Ticket Type</div>
+        <div class='field-value'>{$ticketType}</div>
+      </div>
+      <div>
+        <div class='field-label'>Holder</div>
+        <div class='field-value'>{$holderName}</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom perforation -->
+  <div class='perf' style='margin-top: 24px;'>
+    <div class='perf-circle perf-circle-left'></div>
+    <div class='perf-line'></div>
+    <div class='perf-circle perf-circle-right'></div>
+  </div>
+
+  <!-- QR Section -->
+  <div class='qr-section'>
+    <div class='qr-label'>Scan at the gate</div>
+
+    <div class='qr-box'>
+      {$qrHtml}
+    </div>
+
+    <div class='status-pill'>
+      <div class='status-dot'></div>
+      <span class='status-text'>{$statusLabel}</span>
+    </div>
+
+    <div class='issued-by'>Issued via {$appName}</div>
+  </div>
+
+</div>
+</body>
+</html>";
   }
 }
