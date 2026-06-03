@@ -13,8 +13,11 @@ class QueueService
   }
 
   // ============================================================
-  // Push a job onto the queue
-  // Called instead of sending email directly
+  // Core push — all helpers call this.
+  //
+  // $queue: 'email' | 'pdf'
+  //   'email' → picked up by email_worker.php (every minute)
+  //   'pdf'   → picked up by pdf_worker.php   (every 5 minutes)
   //
   // Usage:
   //   QueueService::push('send_otp', [
@@ -24,15 +27,20 @@ class QueueService
   //       'type'  => 'register',
   //   ]);
   // ============================================================
-  public static function push(string $type, array $payload, int $delaySeconds = 0): bool
-  {
+  public static function push(
+    string $type,
+    array  $payload,
+    int    $delaySeconds = 0,
+    string $queue        = 'email'
+  ): bool {
     try {
       self::db()->prepare("
-        INSERT INTO jobs (type, payload, status, available_at)
-        VALUES (?, ?, 'pending', DATE_ADD(NOW(), INTERVAL ? SECOND))
+        INSERT INTO jobs (type, payload, queue, status, available_at)
+        VALUES (?, ?, ?, 'pending', DATE_ADD(NOW(), INTERVAL ? SECOND))
       ")->execute([
         $type,
         json_encode($payload),
+        $queue,
         $delaySeconds,
       ]);
 
@@ -44,7 +52,7 @@ class QueueService
   }
 
   // ============================================================
-  // EMAIL JOBS
+  // EMAIL JOBS  →  queue: 'email'
   // ============================================================
 
   public static function sendOTP(string $email, string $name, string $otp, string $type): void
@@ -54,7 +62,7 @@ class QueueService
       'name'  => $name,
       'otp'   => $otp,
       'type'  => $type,
-    ]);
+    ], 0, 'email');
   }
 
   public static function sendTicketConfirmation(
@@ -78,7 +86,7 @@ class QueueService
       'quantity'       => $quantity,
       'total_amount'   => $totalAmount,
       'dashboard_url'  => $dashboardUrl,
-    ]);
+    ], 0, 'email');
   }
 
   public static function sendPasswordChanged(string $email, string $name): void
@@ -86,41 +94,45 @@ class QueueService
     self::push('send_password_changed', [
       'email' => $email,
       'name'  => $name,
-    ]);
+    ], 0, 'email');
   }
 
-    // ============================================================
-    // PDF JOBS
-    // ============================================================
+  // ============================================================
+  // PDF JOBS  →  queue: 'pdf'
+  // ============================================================
 
   /**
-   * Queue a tictet PDF generation job for a paid booking.
+   * Queue a ticket PDF generation for a single paid booking.
    *
-   * Called from BookingController::verify() after payment confirmed.
-   * Delayed by 5 seconds to let the booking transaction fully commit
-   * before Browsershot tries to read it.
+   * Delayed by $delaySeconds to let the booking transaction
+   * fully commit before Browsershot tries to read it.
    *
-   * @param int $bookingId  The confirmed paid booking ID
-   * @param int $delaySeconds  Seconds to wait before processing (default 5)
+   * @param int $bookingId     The confirmed paid booking ID
+   * @param int $delaySeconds  Seconds to wait before processing (default 10)
    */
-  public static function generateTicket(int $bookingId, int $delaySeconds = 5): void
+  public static function generateTicket(int $bookingId, int $delaySeconds = 10): void
   {
     self::push('generate_ticket', [
       'booking_id' => $bookingId,
-    ], $delaySeconds);
+    ], $delaySeconds, 'pdf');
   }
 
   /**
-   * Queue tictet generation for multiple bookings at once.
-   * Used by admin when bulk-processing tictets.
+   * Queue bulk ticket PDF generation for multiple bookings.
+   * Useful for admin re-generation or backfill tasks.
    *
    * @param int[] $bookingIds
    */
   public static function generateTicketBulk(array $bookingIds): void
   {
-    foreach ($bookingIds as $index => $bookingId) {
-      // Stagger by 3 seconds each to avoid hammering Chromium
-      self::generateTicket((int) $bookingId, 5 + ($index * 3));
+    // Split into chunks of 10 so no single job runs forever
+    $chunks = array_chunk($bookingIds, 10);
+
+    foreach ($chunks as $index => $chunk) {
+      // Stagger each chunk by 60s so worker runs don't overlap
+      self::push('generate_tickets_bulk', [
+        'booking_ids' => $chunk,
+      ], $index * 60, 'pdf');
     }
   }
 }
