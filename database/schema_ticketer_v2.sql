@@ -363,6 +363,13 @@ ALTER TABLE organizer_payment_details
   ADD COLUMN paystack_recipient_code VARCHAR(100) DEFAULT NULL 
   AFTER paystack_subaccount_id;
 
+ALTER TABLE jobs 
+ADD COLUMN queue VARCHAR(30) NOT NULL DEFAULT 'email' 
+AFTER type;
+-- Backfill existing PDF jobs if any are still pending
+UPDATE jobs SET queue = 'pdf' WHERE type = 'generate_ticket';
+UPDATE jobs SET queue = 'pdf' WHERE type = 'generate_tickets_bulk';
+
 -- ------------------------------------------------------------
 -- users  (unchanged)
 -- ------------------------------------------------------------
