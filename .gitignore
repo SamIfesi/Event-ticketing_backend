@@ -17,3 +17,6 @@ client_secret_881137395596-q4iqm89l98sis7i7li4mneufl426ajf2.apps.googleuserconte
 prompt.html
 
 node_modules/
+
+public/assets/tailwind.css
+worker.php
