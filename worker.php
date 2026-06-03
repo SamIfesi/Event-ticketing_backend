@@ -122,7 +122,8 @@ foreach ($jobs as $job) {
           break;
         }
 
-        $filePath = PDFService::generateTicket($bookingId);
+        $filePaths = PDFService::generateTicket($bookingId);
+        $filePath = $filePaths[0];
         $fileSize = filesize($filePath);
 
         echo "[" . date('Y-m-d H:i:s') . "] Ticket generated: {$filePath} (" . round($fileSize / 1024, 1) . " KB)\n";
