@@ -140,7 +140,7 @@ class PDFService
         ->setNpmBinary($npmPath)
         ->noSandbox()
         ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage']) 
-        ->paperSize(420, 760, 'pt') 
+        ->paperSize(420, 760, 'px') 
         ->showBackground()
         ->waitUntilNetworkIdle()
         ->save($filePath);
