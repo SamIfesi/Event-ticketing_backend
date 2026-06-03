@@ -88,7 +88,8 @@ class TicketPDFController
     PDFService::deleteTicket($bookingId);
 
     try {
-      $filePath = PDFService::generateTicket($bookingId);
+      $filePaths = PDFService::generateTicket($bookingId);
+      $filePath = $filePaths[0];
       Response::success([
         'booking_id'  => $bookingId,
         'ticket_url' => PDFService::getTicketUrl($bookingId),
