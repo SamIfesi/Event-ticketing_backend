@@ -88,12 +88,12 @@ class TicketPDFController
     PDFService::deleteTicket($bookingId);
 
     try {
-      $filePaths = PDFService::generateTicket($bookingId);
-      $filePath = $filePaths[0];
+      $filePaths = PDFService::generateTickets($bookingId);
+      $filePath  = $filePaths[0] ?? null;
       Response::success([
         'booking_id'  => $bookingId,
-        'ticket_url' => PDFService::getTicketUrl($bookingId),
-        'file_size'   => $this->humanFileSize(filesize($filePath)),
+        'ticket_url'  => PDFService::getTicketUrl($bookingId),
+        'file_size'   => $filePath && file_exists($filePath) ? $this->humanFileSize(filesize($filePath)) : null,
       ], 'Ticket regenerated successfully.');
     } catch (Exception $e) {
       error_log("TicketController::regenerate error for booking #{$bookingId}: " . $e->getMessage());
@@ -150,14 +150,28 @@ class TicketPDFController
       Response::forbidden('You do not have access to this booking.');
     }
 
-    $exists   = PDFService::ticketExists($bookingId);
-    $filePath = PDFService::getTicketPath($bookingId);
+    $exists = PDFService::ticketExists($bookingId);
+
+    $filePath    = null;
+    $fileSize    = null;
+    $downloadUrl = null;
+
+    if ($exists) {
+      try {
+        $filePath    = PDFService::getTicketPath($bookingId);
+        $fileSize    = file_exists($filePath) ? $this->humanFileSize(filesize($filePath)) : null;
+        $downloadUrl = PDFService::getTicketUrl($bookingId);
+      } catch (Exception $e) {
+        // Tickets exist in DB but paths unresolvable — treat as not generated
+        $exists = false;
+      }
+    }
 
     Response::success([
       'booking_id'       => $bookingId,
       'ticket_generated' => $exists,
-      'file_size'        => $exists ? $this->humanFileSize(filesize($filePath)) : null,
-      'download_url'     => $exists ? PDFService::getTicketUrl($bookingId) : null,
+      'file_size'        => $fileSize,
+      'download_url'     => $downloadUrl,
     ]);
   }
 
@@ -167,15 +181,18 @@ class TicketPDFController
 
   /**
    * Core ticket serving logic.
-   * Generates the PDF if it doesn't already exist,
-   * then streams it as a download.
+   *
+   * For single-ticket bookings: streams the one PDF directly.
+   * For multi-ticket bookings:  streams a ZIP containing all ticket PDFs.
+   *
+   * Generates PDFs on first request; cached on subsequent calls.
    */
   private function serveTicket(int $bookingId, array $booking): void
   {
     // Generate if not already cached
     if (!PDFService::ticketExists($bookingId)) {
       try {
-        PDFService::generateTicket($bookingId);
+        PDFService::generateTickets($bookingId);
       } catch (Exception $e) {
         error_log("TicketController::serveTicket generation error for booking #{$bookingId}: " . $e->getMessage());
         Response::error('Could not generate ticket. Please try again shortly.', 500);
@@ -183,16 +200,34 @@ class TicketPDFController
       }
     }
 
-    $filePath = PDFService::getTicketPath($bookingId);
-
-    if (!file_exists($filePath)) {
+    // Resolve all PDF paths for this booking
+    try {
+      $filePaths = PDFService::getTicketPaths($bookingId);
+    } catch (Exception $e) {
+      error_log("TicketController::serveTicket path resolution error for booking #{$bookingId}: " . $e->getMessage());
       Response::error('Ticket file not found. Please try regenerating it.', 404);
       return;
     }
 
-    // Stream the PDF to the browser
+    // Filter to only files that actually exist on disk
+    $existingPaths = array_filter($filePaths, fn($p) => file_exists($p));
+
+    if (empty($existingPaths)) {
+      Response::error('Ticket file not found. Please try regenerating it.', 404);
+      return;
+    }
+
     $bookingIdPadded = str_pad($bookingId, 6, '0', STR_PAD_LEFT);
-    $filename        = "Ticketer_Ticket_#{$bookingIdPadded}.pdf";
+
+    // ── Single ticket: stream PDF directly ───────────────────
+    if (count($existingPaths) === 1) {
+      $filePath = reset($existingPaths);
+      $filename = "Ticketer_Ticket_#{$bookingIdPadded}.pdf";
+
+      // Clear any buffered output before streaming binary
+      if (ob_get_level()) {
+        ob_end_clean();
+      }
 
     header('Content-Type: application/pdf');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
@@ -200,12 +235,65 @@ class TicketPDFController
     header('Cache-Control: private, max-age=0, must-revalidate');
     header('Pragma: public');
 
-    // Stop any JSON output buffering
+      readfile($filePath);
+      exit;
+    }
+
+    // ── Multiple tickets: bundle into a ZIP ──────────────────
+    if (!extension_loaded('zip')) {
+      // ZIP not available — stream the first ticket and note the limitation
+      error_log("ZIP extension not loaded; serving only ticket 1 of " . count($existingPaths) . " for booking #{$bookingId}");
+      $filePath = reset($existingPaths);
+      $filename = "Ticketer_Ticket_#{$bookingIdPadded}.pdf";
+
+      if (ob_get_level()) {
+        ob_end_clean();
+      }
+
+      header('Content-Type: application/pdf');
+      header('Content-Disposition: attachment; filename="' . $filename . '"');
+      header('Content-Length: ' . filesize($filePath));
+      header('Cache-Control: private, max-age=0, must-revalidate');
+
+      readfile($filePath);
+      exit;
+    }
+
+    $zipPath = sys_get_temp_dir() . "/ticketer_booking_{$bookingId}_" . time() . '.zip';
+    $zip     = new ZipArchive();
+
+    if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+      Response::error('Could not create ticket archive. Please try again.', 500);
+      return;
+    }
+
+    $i = 1;
+    foreach ($existingPaths as $path) {
+      $zip->addFile($path, "Ticket_{$i}_Booking_{$bookingIdPadded}.pdf");
+      $i++;
+    }
+    $zip->close();
+
+    if (!file_exists($zipPath)) {
+      Response::error('Could not package tickets. Please try again.', 500);
+      return;
+    }
+
+    $filename = "Ticketer_Tickets_#{$bookingIdPadded}.zip";
+
     if (ob_get_level()) {
       ob_end_clean();
     }
 
-    readfile($filePath);
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Length: ' . filesize($zipPath));
+    header('Cache-Control: private, max-age=0, must-revalidate');
+
+    readfile($zipPath);
+
+    // Clean up temp ZIP
+    @unlink($zipPath);
     exit;
   }
 
