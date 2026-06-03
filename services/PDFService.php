@@ -28,12 +28,23 @@ class PDFService
 {
   private static string $storageDir = __DIR__ . '/../storage/tickets/';
 
+  /**
+   * Backwards compatibility wrapper for old controller calls.
+   * If something calls generateTicket, we process the ticket array 
+   * and return the first ticket path.
+   */
+  public static function generateTicket(int $bookingId): string
+  {
+    $paths = self::generateTickets($bookingId);
+    return $paths[0] ?? '';
+  }
+
   // ============================================================
   // Generate one PDF ticket per ticket row under a booking.
   // Returns an array of absolute file paths.
   // Throws on failure.
   // ============================================================
-  public static function generateTicket(int $bookingId): array
+  public static function generateTickets(int $bookingId): array
   {
     $db = Database::connect();
 
@@ -64,7 +75,6 @@ class PDFService
                 u.email             AS attendee_email,
 
                 org.name            AS organizer_name,
-                org.email               AS organizer_email,
 
                 c.name              AS category_name
             FROM bookings b
@@ -128,10 +138,9 @@ class PDFService
         ->setChromePath($chromiumPath)
         ->setNodeBinary($nodePath)
         ->setNpmBinary($npmPath)
-        ->noSandbox()                   // Required in Docker
-        ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage'])
-        ->paperSize(390, 780)   // portrait mobile width in points
-        ->margins(0, 0, 0, 0)
+        ->noSandbox()
+        ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage']) 
+        ->paperSize(420, 760, 'pt') 
         ->showBackground()
         ->waitUntilNetworkIdle()
         ->save($filePath);
@@ -168,7 +177,7 @@ class PDFService
   // ============================================================
   // Get path for a single ticket PDF.
   // ============================================================
-  public static function getTicketPath(int $ticketId): string
+  public static function getTicket(int $ticketId): string
   {
     return self::$storageDir . "ticket_{$ticketId}.pdf";
   }
@@ -176,7 +185,7 @@ class PDFService
   // ============================================================
   // Get all ticket PDF paths for a booking.
   // ============================================================
-  public static function getReceiptPath(int $bookingId): string
+  public static function getTicketPath(int $bookingId): string
   {
     // For single-ticket bookings — returns the first ticket path.
     // For multi-ticket, use getTicketPaths().
