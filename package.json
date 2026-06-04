@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "build:pdf": "npx @tailwindcss/cli -i ./resources/index.css -o ./resources/pdf.css --minify",
+    "watch:pdf": "npx @tailwindcss/cli -i ./resources/index.css -o ./resources/pdf.css --watch"
+  },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.0",
     "puppeteer": "^25.1.0",
