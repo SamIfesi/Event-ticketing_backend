@@ -271,6 +271,9 @@ class PDFService
   // ============================================================
   private static function renderTemplate(array $booking, array $ticket): string
   {
+    $taildwindcss =  file_get_contents(__DIR__ . '/../resources/pdf.css');
+    $template_ticket =  file_get_contents(__DIR__ . '/../templates/ticket.css');
+    
     $appName   = Environment::get('APP_NAME', 'Ticketer');
     $appUrl    = Environment::get('APP_URL',  'http://localhost');
 
