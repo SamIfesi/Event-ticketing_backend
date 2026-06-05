@@ -392,6 +392,7 @@ class ProfileController
                 t.is_used,
                 t.used_at,
                 t.created_at,
+                b.total_amount,
                 e.id          AS event_id,
                 e.title       AS event_title,
                 e.location    AS event_location,
