@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @theme {
   --color-primary: #0f172a;
@@ -30,6 +30,13 @@
 
   --font-fractul: 'Fractul', sans-serif;
   --font-heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  /* PDF specific */
+  --color-pdf-bg: #e8eaf2;
+  --color-pdf-hero: #eef0f7;
+  --color-pdf-text: #1a1f36;
+  --color-pdf-muted: #8c93a8;
+  --color-pdf-perf: #cdd0db;
 }
 
 @layer base {
