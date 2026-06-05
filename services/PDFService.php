@@ -140,7 +140,7 @@ class PDFService
         ->setNpmBinary($npmPath)
         ->noSandbox()
         ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage']) 
-        ->paperSize(420, 760, 'px') 
+        ->paperSize(360, 600, 'px') 
         ->showBackground()
         ->waitUntilNetworkIdle()
         ->save($filePath);
@@ -303,8 +303,8 @@ class PDFService
       : '';
 
     $qrHtml = $qrUrl
-      ? "<img src='{$qrUrl}' alt='QR Code' style='width:100px;height:100px;display:block;margin:0 auto;' />"
-      : "<div style='width:100px;height:100px;margin:0 auto;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;'>
+      ? "<img src='{$qrUrl}' alt='QR Code' style='width:120px;height:120px;display:block;margin:0 auto;' />"
+      : "<div style='width:120px;height:120px;margin:0 auto;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;'>
                  <svg width='60' height='60' viewBox='0 0 24 24' fill='none' stroke='#94a3b8' stroke-width='1.5'>
                    <rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/>
                    <rect x='3' y='14' width='7' height='7'/><rect x='14' y='14' width='3' height='3'/>
@@ -316,7 +316,7 @@ class PDFService
     $statusDot = $isUsed 
       ? "<div class=w-2.5 h-2.5 rounded-full shrink-0 bg-primary></div>"
       : "<div class=w-2.5 h-2.5 rounded-full shrink-0 bg-success></div>";
-    $logo = "<img src='{$appUrl}/public/logo.svg' alt='Ticketer Logo' style='width:70px;margin:0 auto;display:block;' />";
+    $logo = "<img src='{$appUrl}/public/assets/logo.svg' alt='Ticketer Logo' style='width:70px;margin:0 auto;display:block;' />";
 
     return str_replace([
       '{{TAILWIND_CSS}}',
