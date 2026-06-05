@@ -271,25 +271,20 @@ class PDFService
   // ============================================================
   private static function renderTemplate(array $booking, array $ticket): string
   {
-    $taildwindcss =  file_get_contents(__DIR__ . '/../resources/pdf.css');
-    $template_ticket =  file_get_contents(__DIR__ . '/../templates/ticket.css');
-    
     $appName   = Environment::get('APP_NAME', 'Ticketer');
     $appUrl    = Environment::get('APP_URL',  'http://localhost');
 
+    $taildwindcss =  file_get_contents(__DIR__ . '/../resources/pdf.css');
+    $template_ticket =  file_get_contents(__DIR__ . '/../templates/ticket.html');
+
     // ── Format values ─────────────────────────────────────
-    $ticketIdPadded = str_pad($ticket['id'], 6, '0', STR_PAD_LEFT);
+    $ticketId = (int) $ticket['id'];
+    $ticketIdPadded = str_pad($ticketId, 6, '0', STR_PAD_LEFT);
     $amount         = (float) $booking['unit_price'] === 0.0
       ? 'Free'
       : '₦' . number_format((float) $booking['unit_price'], 0);
 
-    $eventDate = $booking['event_start_date']
-      ? date('d M Y', strtotime($booking['event_start_date']))
-      : 'TBC';
-    $eventTime = $booking['event_start_date']
-      ? date('g:i a', strtotime($booking['event_start_date']))
-      : '';
-    $dateTime  = $eventDate . ' · ' . $eventTime;
+    $dateTime     = $booking['event_start_date'] ? date('D d M y - g:ia', strtotime($booking['event_start_date'])) : 'TBC';
 
     $venue        = htmlspecialchars($booking['event_location'] ?? 'TBC');
     $ticketType   = htmlspecialchars($booking['ticket_type']);
@@ -308,8 +303,8 @@ class PDFService
       : '';
 
     $qrHtml = $qrUrl
-      ? "<img src='{$qrUrl}' alt='QR Code' style='width:200px;height:200px;display:block;margin:0 auto;' />"
-      : "<div style='width:200px;height:200px;margin:0 auto;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;'>
+      ? "<img src='{$qrUrl}' alt='QR Code' style='width:100px;height:100px;display:block;margin:0 auto;' />"
+      : "<div style='width:100px;height:100px;margin:0 auto;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;'>
                  <svg width='60' height='60' viewBox='0 0 24 24' fill='none' stroke='#94a3b8' stroke-width='1.5'>
                    <rect x='3' y='3' width='7' height='7'/><rect x='14' y='3' width='7' height='7'/>
                    <rect x='3' y='14' width='7' height='7'/><rect x='14' y='14' width='3' height='3'/>
@@ -318,250 +313,39 @@ class PDFService
                  </svg>
                </div>";
 
-    return "<!DOCTYPE html>
-<html lang='en'>
-<head>
-  <meta charset='UTF-8'>
-  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-  <title>Ticket #{$ticketIdPadded}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    $statusDot = $isUsed 
+      ? "<div class=w-2.5 h-2.5 rounded-full shrink-0 bg-primary></div>"
+      : "<div class=w-2.5 h-2.5 rounded-full shrink-0 bg-success></div>";
+    $logo = "<img src='{$appUrl}/public/logo.svg' alt='Ticketer Logo' style='width:70px;margin:0 auto;display:block;' />";
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-      background: #e8eaf2;
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      min-height: 100vh;
-      padding: 24px 16px;
-    }
-
-    .ticket {
-      width: 420px;
-      background: #ffffff;
-      border-radius: 24px;
-      overflow: visible;
-      position: relative;
-    }
-
-    /* ── Hero header ── */
-    .hero {
-      background: #eef0f7;
-      border-radius: 24px 24px 0 0;
-      padding: 36px 24px 28px;
-      text-align: center;
-    }
-    .hero-emoji {
-      font-size: 48px;
-      line-height: 1;
-      margin-bottom: 14px;
-    }
-    .hero-title {
-      font-size: 21px;
-      font-weight: 700;
-      color: #1a1f36;
-      margin-bottom: 6px;
-      letter-spacing: -0.01em;
-    }
-    .hero-subtitle {
-      font-size: 13px;
-      color: #8c93a8;
-    }
-
-    /* ── Perforation ── */
-    .perf {
-      position: relative;
-      height: 0;
-      display: flex;
-      align-items: center;
-      overflow: visible;
-      z-index: 2;
-      margin: 0;
-    }
-    .perf-circle {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      background: #e8eaf2;
-      flex-shrink: 0;
-    }
-    .perf-circle-left  { margin-left: -12px; }
-    .perf-circle-right { margin-right: -12px; }
-    .perf-line {
-      flex: 1;
-      border-top: 2px dashed #cdd0db;
-      margin: 0 6px;
-    }
-
-    /* ── Ticket body ── */
-    .body {
-      padding: 28px 24px 0;
-    }
-
-    .field-label {
-      font-size: 10px;
-      font-weight: 600;
-      color: #8c93a8;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      margin-bottom: 5px;
-    }
-    .field-value {
-      font-size: 17px;
-      font-weight: 700;
-      color: #1a1f36;
-      line-height: 1.3;
-    }
-
-    .row-2col {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      margin-bottom: 22px;
-    }
-    .row-1col {
-      margin-bottom: 22px;
-    }
-
-    /* ── QR section ── */
-    .qr-section {
-      padding: 4px 24px 28px;
-      text-align: center;
-    }
-    .qr-label {
-      font-size: 10px;
-      font-weight: 600;
-      color: #8c93a8;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      margin-bottom: 16px;
-    }
-    .qr-box {
-      width: 200px;
-      height: 200px;
-      margin: 0 auto 20px;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      overflow: hidden;
-      background: #f8fafc;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      background: #f1f5f9;
-      border: 1px solid #e2e8f0;
-      border-radius: 999px;
-      padding: 7px 20px;
-      margin-bottom: 20px;
-    }
-    .status-dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 50%;
-      background: {$statusColor};
-      flex-shrink: 0;
-    }
-    .status-text {
-      font-size: 13px;
-      color: #64748b;
-    }
-    .issued-by {
-      font-size: 12px;
-      color: #b0b6c8;
-    }
-
-    @media print {
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    }
-  </style>
-</head>
-<body>
-<div class='ticket'>
-
-  <!-- Hero -->
-  <div class='hero'>
-    <div class='hero-emoji'>🎉</div>
-    <div class='hero-title'>Your ticket is ready!</div>
-    <div class='hero-subtitle'>{$eventTitle}</div>
-  </div>
-
-  <!-- Top perforation -->
-  <div class='perf' style='margin-top: 0;'>
-    <div class='perf-circle perf-circle-left'></div>
-    <div class='perf-line'></div>
-    <div class='perf-circle perf-circle-right'></div>
-  </div>
-
-  <!-- Body fields -->
-  <div class='body'>
-
-    <!-- Ticket ID + Amount -->
-    <div class='row-2col'>
-      <div>
-        <div class='field-label'>Ticket ID</div>
-        <div class='field-value'>#{$ticketIdPadded}</div>
-      </div>
-      <div style='text-align: right;'>
-        <div class='field-label'>Amount</div>
-        <div class='field-value'>{$amount}</div>
-      </div>
-    </div>
-
-    <!-- Date & Time -->
-    <div class='row-1col'>
-      <div class='field-label'>Date &amp; Time</div>
-      <div class='field-value'>{$dateTime}</div>
-    </div>
-
-    <!-- Venue -->
-    <div class='row-1col'>
-      <div class='field-label'>Venue</div>
-      <div class='field-value'>{$venue}</div>
-    </div>
-
-    <!-- Ticket Type + Holder -->
-    <div class='row-2col' style='margin-bottom: 0;'>
-      <div>
-        <div class='field-label'>Ticket Type</div>
-        <div class='field-value'>{$ticketType}</div>
-      </div>
-      <div>
-        <div class='field-label'>Holder</div>
-        <div class='field-value'>{$holderName}</div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- Bottom perforation -->
-  <div class='perf' style='margin-top: 24px;'>
-    <div class='perf-circle perf-circle-left'></div>
-    <div class='perf-line'></div>
-    <div class='perf-circle perf-circle-right'></div>
-  </div>
-
-  <!-- QR Section -->
-  <div class='qr-section'>
-    <div class='qr-label'>Scan at the gate</div>
-
-    <div class='qr-box'>
-      {$qrHtml}
-    </div>
-
-    <div class='status-pill'>
-      <div class='status-dot'></div>
-      <span class='status-text'>{$statusLabel}</span>
-    </div>
-
-    <div class='issued-by'>Issued via {$appName}</div>
-  </div>
-
-</div>
-</body>
-</html>";
+    return str_replace([
+      '{{TAILWIND_CSS}}',
+      '{{TICKET_ID}}',
+      '{{AMOUNT}}',
+      '{{EVENT_TITLE}}',
+      '{{DATE_TIME}}',
+      '{{VENUE}}',
+      '{{TICKET_TYPE}}',
+      '{{HOLDER_NAME}}',
+      '{{STATUS_LABEL}}',
+      '{{STATUS_COLOR}}',
+      '{{STATUS_DOT}}',
+      '{{QR_HTML}}',
+      '{{LOGO}}',
+    ], [
+      $taildwindcss,
+      $ticketIdPadded,
+      $amount,
+      $eventTitle,
+      $dateTime,
+      $venue,
+      $ticketType,
+      $holderName,
+      $statusLabel,
+      $statusColor,
+      $statusDot,
+      $qrHtml,
+      $logo
+    ], $template_ticket);
   }
 }
