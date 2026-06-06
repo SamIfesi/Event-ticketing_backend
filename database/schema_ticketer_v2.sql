@@ -370,6 +370,21 @@ AFTER type;
 UPDATE jobs SET queue = 'pdf' WHERE type = 'generate_ticket';
 UPDATE jobs SET queue = 'pdf' WHERE type = 'generate_tickets_bulk';
 
+-- ============================================================
+-- MIGRATION: Google OAuth Support
+-- Run this against your ticketer_db before deploying
+-- ============================================================
+
+ALTER TABLE `users`
+  ADD COLUMN `google_id`      VARCHAR(255) DEFAULT NULL AFTER `avatar_public_id`,
+  ADD COLUMN `auth_provider`  ENUM('email', 'google') NOT NULL DEFAULT 'email' AFTER `google_id`,
+  ADD UNIQUE KEY `google_id` (`google_id`);
+
+-- Google-authenticated users are already verified by Google
+-- so email_verified stays 1 for them (set in controller)
+-- Optional: see which users signed up via Google later
+-- SELECT * FROM users WHERE auth_provider = 'google';
+
 -- ------------------------------------------------------------
 -- users  (unchanged)
 -- ------------------------------------------------------------
