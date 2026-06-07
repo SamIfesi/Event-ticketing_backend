@@ -397,8 +397,8 @@ class PDFService
                </div>";
 
     $statusDot = $isUsed
-      ? "<div class='w-2.5 h-2.5 rounded-full shrink-0 bg-primary'></div>"
-      : "<div class='w-2.5 h-2.5 rounded-full shrink-0 bg-success'></div>";
+      ? "<div class='w-1.5 h-1.5 rounded-full shrink-0 bg-primary'></div>"
+      : "<div class='w-1.5 h-1.5 rounded-full shrink-0 bg-success'></div>";
 
     $logo = "<img src='{$appUrl}/public/assets/logo.svg' alt='Ticketer Logo' style='width:70px;margin:0 auto;display:block;' />";
 
