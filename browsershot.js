@@ -47,7 +47,8 @@ const puppeteer = require('puppeteer');
 
     const browser = await puppeteer.launch({
       executablePath:
-        process.env.PUPPETEER_EXECUTABLE_PATH || (isLinux ? '/usr/bin/chromium' : undefined),
+        process.env.PUPPETEER_EXECUTABLE_PATH ||
+        (isLinux ? '/usr/bin/chromium' : undefined),
       headless: 'new',
       args: [
         '--no-sandbox',
@@ -68,8 +69,8 @@ const puppeteer = require('puppeteer');
 
       // Set viewport to match our ticket width
       await page.setViewport({
-        width: 390,
-        height: 780,
+        width: 360,
+        height: 600,
         deviceScaleFactor: 2, // Retina-quality output
       });
 
@@ -104,11 +105,25 @@ const puppeteer = require('puppeteer');
         },
       };
 
-      const pdf = await page.pdf(pdfOptions);
+      // If the request is for a screenshot instead of a PDF, adjust options accordingly
+      if (request.type === 'screenshot') {
+        const screenshotOptions = {
+          path: request.outputFile || undefined,
+          type: request.screenshotType || 'png',
+          fullPage: request.fullPage ?? false,
+          clip: request.clip || undefined,
+        };
+        const img = await page.screenshot(screenshotOptions);
+        if(!request.outputFile) {
+          process.stdout.write(img);
+        }
+      } else {
+        const pdf = await page.pdf(pdfOptions);
 
-      // If no outputFile was set, write to stdout so PHP can read it
-      if (!request.outputFile) {
-        process.stdout.write(pdf);
+        // If no outputFile was set, write to stdout so PHP can read it
+        if (!request.outputFile) {
+          process.stdout.write(pdf);
+        }
       }
 
       await browser.close();
