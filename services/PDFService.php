@@ -1,19 +1,17 @@
 <?php
 
 /**
- * PDFService
- *
- * Generates PDF tickets for paid bookings using
+ * Generates PDF and PNG tickets for paid bookings using
  * Spatie Browsershot (which wraps Puppeteer/Chromium).
  *
- * One PDF is generated per ticket (not per booking).
- * So if a user bought 3 tickets, 3 PDFs are generated.
+ * One PDF and one PNG is generated per ticket (not per booking).
+ * So if a user bought 3 tickets, 3 PDFs and 3 PNGs are generated.
  *
  * Flow:
  *   1. Fetch booking + event + ticket data from DB
  *   2. Render HTML ticket template for each ticket
- *   3. Browsershot converts HTML → PDF
- *   4. Store in storage/tickets/ticket_{ticketId}.pdf
+ *   3. Browsershot converts HTML → PDF (then HTML → PNG)
+ *   4. Store in storage/tickets/ticket_{ticketId}.pdf + .png
  *   5. Return array of file paths
  *
  * Requirements (handled by Dockerfile):
@@ -39,11 +37,9 @@ class PDFService
     return $paths[0] ?? '';
   }
 
-  // ============================================================
-  // Generate one PDF ticket per ticket row under a booking.
-  // Returns an array of absolute file paths.
+  // Generate one PDF ticket + one PNG ticket per ticket row
+  // under a booking. Returns an array of absolute PDF file paths.
   // Throws on failure.
-  // ============================================================
   public static function generateTickets(int $bookingId): array
   {
     $db = Database::connect();
@@ -121,39 +117,59 @@ class PDFService
 
     $filePaths = [];
 
-    // ── Generate one PDF per ticket ───────────────────────
+    // ── Generate one PDF + one PNG per ticket ─────────────
     foreach ($tickets as $ticket) {
       $ticketId = (int) $ticket['id'];
-      $filePath = self::$storageDir . "ticket_{$ticketId}.pdf";
+      $pdfPath  = self::$storageDir . "ticket_{$ticketId}.pdf";
+      $pngPath  = self::$storageDir . "ticket_{$ticketId}.png";
 
-      // Skip if already generated
-      if (file_exists($filePath)) {
-        $filePaths[] = $filePath;
+      // Skip if both already generated
+      if (file_exists($pdfPath) && file_exists($pngPath)) {
+        $filePaths[] = $pdfPath;
         continue;
       }
 
       $html = self::renderTemplate($booking, $ticket);
 
-      Browsershot::html($html)
-        ->setChromePath($chromiumPath)
-        ->setNodeBinary($nodePath)
-        ->setNpmBinary($npmPath)
-        ->noSandbox()
-        ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage']) 
-        ->paperSize(360, 600, 'px') 
-        ->showBackground()
-        ->waitUntilNetworkIdle()
-        ->save($filePath);
+      // ── Generate PDF ──────────────────────────────────
+      if (!file_exists($pdfPath)) {
+        Browsershot::html($html)
+          ->setChromePath($chromiumPath)
+          ->setNodeBinary($nodePath)
+          ->setNpmBinary($npmPath)
+          ->noSandbox()
+          ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage'])
+          ->paperSize(360, 600, 'px')
+          ->deviceScaleFactor(3)
+          ->showBackground()
+          ->waitUntilNetworkIdle()
+          ->save($pdfPath);
+      }
 
-      $filePaths[] = $filePath;
+      // ── Generate PNG ──────────────────────────────────
+      // Browsershot auto-detects .png extension and uses
+      // page.screenshot() instead of page.pdf() internally.
+      if (!file_exists($pngPath)) {
+        Browsershot::html($html)
+          ->setChromePath($chromiumPath)
+          ->setNodeBinary($nodePath)
+          ->setNpmBinary($npmPath)
+          ->noSandbox()
+          ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage'])
+          ->windowSize(360, 600)
+          ->deviceScaleFactor(3)
+          ->showBackground()
+          ->waitUntilNetworkIdle()
+          ->save($pngPath);
+      }
+
+      $filePaths[] = $pdfPath;
     }
 
     return $filePaths;
   }
 
-  // ============================================================
-  // Check if ALL tickets under a booking have been generated.
-  // ============================================================
+  // Check if ALL ticket PDFs under a booking have been generated.
   public static function ticketExists(int $bookingId): bool
   {
     $db   = Database::connect();
@@ -174,17 +190,34 @@ class PDFService
     return true;
   }
 
-  // ============================================================
+  // Check if ALL ticket PNGs under a booking have been generated.
+  public static function ticketPngExists(int $bookingId): bool
+  {
+    $db   = Database::connect();
+    $stmt = $db->prepare("
+            SELECT id FROM tickets
+            WHERE booking_id = ? AND deleted_at IS NULL
+        ");
+    $stmt->execute([$bookingId]);
+    $tickets = $stmt->fetchAll();
+
+    if (empty($tickets)) return false;
+
+    foreach ($tickets as $ticket) {
+      $path = self::$storageDir . "ticket_{$ticket['id']}.png";
+      if (!file_exists($path)) return false;
+    }
+
+    return true;
+  }
+
   // Get path for a single ticket PDF.
-  // ============================================================
   public static function getTicket(int $ticketId): string
   {
     return self::$storageDir . "ticket_{$ticketId}.pdf";
   }
 
-  // ============================================================
-  // Get all ticket PDF paths for a booking.
-  // ============================================================
+  // Get the first PDF path for a booking (single-ticket shortcut).
   public static function getTicketPath(int $bookingId): string
   {
     // For single-ticket bookings — returns the first ticket path.
@@ -205,9 +238,7 @@ class PDFService
     return self::$storageDir . "ticket_{$ticket['id']}.pdf";
   }
 
-  // ============================================================
   // Get all PDF paths for a booking (multi-ticket).
-  // ============================================================
   public static function getTicketPaths(int $bookingId): array
   {
     $db   = Database::connect();
@@ -225,9 +256,44 @@ class PDFService
     );
   }
 
-  // ============================================================
-  // Delete all cached ticket PDFs for a booking.
-  // ============================================================
+  // Get the first PNG path for a booking (single-ticket shortcut).
+  public static function getTicketPngPath(int $bookingId): string
+  {
+    $db   = Database::connect();
+    $stmt = $db->prepare("
+            SELECT id FROM tickets
+            WHERE booking_id = ? AND deleted_at IS NULL
+            ORDER BY id ASC LIMIT 1
+        ");
+    $stmt->execute([$bookingId]);
+    $ticket = $stmt->fetch();
+
+    if (!$ticket) {
+      throw new Exception("No tickets found for booking #{$bookingId}.");
+    }
+
+    return self::$storageDir . "ticket_{$ticket['id']}.png";
+  }
+
+  // Get all PNG paths for a booking (multi-ticket).
+  public static function getTicketPngPaths(int $bookingId): array
+  {
+    $db   = Database::connect();
+    $stmt = $db->prepare("
+            SELECT id FROM tickets
+            WHERE booking_id = ? AND deleted_at IS NULL
+            ORDER BY id ASC
+        ");
+    $stmt->execute([$bookingId]);
+    $tickets = $stmt->fetchAll();
+
+    return array_map(
+      fn($t) => self::$storageDir . "ticket_{$t['id']}.png",
+      $tickets
+    );
+  }
+
+  // Delete all cached ticket PDFs and PNGs for a booking.
   public static function deleteTicket(int $bookingId): void
   {
     $db   = Database::connect();
@@ -238,16 +304,16 @@ class PDFService
     $tickets = $stmt->fetchAll();
 
     foreach ($tickets as $ticket) {
-      $path = self::$storageDir . "ticket_{$ticket['id']}.pdf";
-      if (file_exists($path)) {
-        unlink($path);
+      foreach (['pdf', 'png'] as $ext) {
+        $path = self::$storageDir . "ticket_{$ticket['id']}.{$ext}";
+        if (file_exists($path)) {
+          unlink($path);
+        }
       }
     }
   }
 
-  // ============================================================
   // Public URL for a single ticket PDF.
-  // ============================================================
   public static function getTicketUrl(int $bookingId): string
   {
     $db   = Database::connect();
@@ -265,35 +331,52 @@ class PDFService
     return "{$appUrl}/storage/tickets/ticket_{$ticket['id']}.pdf";
   }
 
-  // ============================================================
+  // Public URL for a single ticket PNG.
+  public static function getTicketPngUrl(int $bookingId): string
+  {
+    $db   = Database::connect();
+    $stmt = $db->prepare("
+            SELECT id FROM tickets
+            WHERE booking_id = ? AND deleted_at IS NULL
+            ORDER BY id ASC LIMIT 1
+        ");
+    $stmt->execute([$bookingId]);
+    $ticket = $stmt->fetch();
+
+    if (!$ticket) return '';
+
+    $appUrl = Environment::get('APP_URL', 'http://localhost');
+    return "{$appUrl}/storage/tickets/ticket_{$ticket['id']}.png";
+  }
+
   // Render the ticket HTML — matches the signature design exactly.
   // One call per ticket row.
-  // ============================================================
   private static function renderTemplate(array $booking, array $ticket): string
   {
-    $appName   = Environment::get('APP_NAME', 'Ticketer');
-    $appUrl    = Environment::get('APP_URL',  'http://localhost');
+    $appUrl = Environment::get('APP_URL', 'http://localhost');
 
-    $taildwindcss =  file_get_contents(__DIR__ . '/../resources/pdf.css');
-    $template_ticket =  file_get_contents(__DIR__ . '/../templates/ticket.html');
+    $tailwindcss     = file_get_contents(__DIR__ . '/../resources/pdf.css');
+    $template_ticket = file_get_contents(__DIR__ . '/../templates/ticket.html');
 
     // ── Format values ─────────────────────────────────────
-    $ticketId = (int) $ticket['id'];
+    $ticketId       = (int) $ticket['id'];
     $ticketIdPadded = str_pad($ticketId, 6, '0', STR_PAD_LEFT);
     $amount         = (float) $booking['unit_price'] === 0.0
       ? 'Free'
       : '₦' . number_format((float) $booking['unit_price'], 0);
 
-    $dateTime     = $booking['event_start_date'] ? date('D d M y - g:ia', strtotime($booking['event_start_date'])) : 'TBC';
+    $dateTime = $booking['event_start_date']
+      ? date('D d M y - g:ia', strtotime($booking['event_start_date']))
+      : 'TBC';
 
-    $venue        = htmlspecialchars($booking['event_location'] ?? 'TBC');
-    $ticketType   = htmlspecialchars($booking['ticket_type']);
-    $holderName   = htmlspecialchars($booking['attendee_name']);
-    $eventTitle   = htmlspecialchars($booking['event_title']);
+    $venue      = htmlspecialchars($booking['event_location'] ?? 'TBC');
+    $ticketType = htmlspecialchars($booking['ticket_type']);
+    $holderName = htmlspecialchars($booking['attendee_name']);
+    $eventTitle = htmlspecialchars($booking['event_title']);
 
     // ── Ticket status ─────────────────────────────────────
     $isUsed      = (bool) $ticket['is_used'];
-    $statusLabel = $isUsed ? 'Used'  : 'Valid';
+    $statusLabel = $isUsed ? 'Used'    : 'Valid';
     $statusColor = $isUsed ? '#94a3b8' : '#22c55e';
 
     // ── QR code image ─────────────────────────────────────
@@ -313,9 +396,10 @@ class PDFService
                  </svg>
                </div>";
 
-    $statusDot = $isUsed 
-      ? "<div class=w-2.5 h-2.5 rounded-full shrink-0 bg-primary></div>"
-      : "<div class=w-2.5 h-2.5 rounded-full shrink-0 bg-success></div>";
+    $statusDot = $isUsed
+      ? "<div class='w-2.5 h-2.5 rounded-full shrink-0 bg-primary'></div>"
+      : "<div class='w-2.5 h-2.5 rounded-full shrink-0 bg-success'></div>";
+
     $logo = "<img src='{$appUrl}/public/assets/logo.svg' alt='Ticketer Logo' style='width:70px;margin:0 auto;display:block;' />";
 
     return str_replace([
@@ -333,7 +417,7 @@ class PDFService
       '{{QR_HTML}}',
       '{{LOGO}}',
     ], [
-      $taildwindcss,
+      $tailwindcss,
       $ticketIdPadded,
       $amount,
       $eventTitle,
@@ -345,7 +429,7 @@ class PDFService
       $statusColor,
       $statusDot,
       $qrHtml,
-      $logo
+      $logo,
     ], $template_ticket);
   }
 }
