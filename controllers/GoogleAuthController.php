@@ -242,6 +242,9 @@ class GoogleAuthController
 
     $this->logActivity($userId, 'register', 'Account created via Google OAuth');
 
+    // Send a welcome email after successfull register
+    QueueService::sendWelcome($email, $displayName);
+
     return $this->fetchUserById($userId);
   }
 
