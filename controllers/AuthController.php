@@ -67,6 +67,9 @@ class AuthController
     // QUEUE the email instead of sending directly — returns instantly
     QueueService::sendOTP($email, $name, $otp, 'register');
 
+    // Also send a welcome email (without OTP) after successful register
+    QueueService::sendWelcome($email, $name);
+
     // Log activity
     $this->logActivity($userId, 'register', 'Account created');
 
@@ -272,7 +275,7 @@ class AuthController
     ")->execute([$userId, $email, $otp, $expiresAt]);
 
 
-    QueueService::sendOTP($email, $name, $otp, 'forgot_password');
+    QueueService::sendForgotPasswordOtp($email, $name, $otp);
 
     Response::success(['message_hint' => "A 6-digit verification code has been sent to {$email}"], 'OTP sent successfully.', 201);
   }
