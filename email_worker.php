@@ -108,6 +108,23 @@ foreach ($jobs as $job) {
         );
         break;
 
+      // ── Welcome email ─────────────────────────
+      case 'send_welcome':
+        $success = $mailer->sendWelcome(
+          $payload['email'],
+          $payload['name']
+        );
+        break;
+
+      // ── Forgot password OTP ─────────────────────────
+      case 'send_forgot_password_otp':
+        $success = $mailer->sendForgotPasswordOtp(
+          $payload['email'],
+          $payload['name'],
+          $payload['otp']
+        );
+        break;
+
       // ── Unknown type landed in the email queue ────────────────
       default:
         throw new Exception("Unexpected job type '{$type}' in email queue.");
