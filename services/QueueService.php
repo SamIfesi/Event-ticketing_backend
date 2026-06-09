@@ -65,6 +65,23 @@ class QueueService
     ], 0, 'email');
   }
 
+  public static function sendWelcome(string $email, string $name): void
+  {
+    self::push('send_welcome', [
+      'email' => $email,
+      'name'  => $name,
+    ]);
+  }
+
+  public static function sendForgotPasswordOtp(string $email, string $name, string $otp): void
+  {
+    self::push('send_forgot_password_otp', [
+      'email' => $email,
+      'name'  => $name,
+      'otp'  => $otp,
+    ], 0, 'email');
+  }
+
   public static function sendTicketConfirmation(
     string $email,
     string $name,
