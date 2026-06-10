@@ -36,6 +36,14 @@ echo "[" . date('Y-m-d H:i:s') . "] Email worker started.\n";
 // Fetch up to 20 pending email jobs
 // Email jobs are fast so we can process more per run
 // ============================================================
+$db->prepare("
+    UPDATE bookings
+    SET payment_status = 'failed'
+    WHERE payment_status = 'pending'
+      AND deleted_at IS NULL
+      AND created_at <= DATE_SUB(NOW(), INTERVAL 1 DAY)
+")->execute();
+
 $stmt = $db->prepare("
     SELECT * FROM jobs
     WHERE status       = 'pending'
