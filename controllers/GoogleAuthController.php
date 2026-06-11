@@ -35,7 +35,7 @@ class GoogleAuthController
   //
   // Returns same shape as /api/auth/login:
   //   { user, token, email_verified: true }
-  public function handleCallback(): void
+  public function googleLogin(): void
   {
     $accessToken = trim($this->request->input('access_token', ''));
 
