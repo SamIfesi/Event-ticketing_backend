@@ -5,6 +5,7 @@
 // ============================================================
 
 // Public routes
+$router->post('/api/auth/google', [GoogleAuthController::class, 'googleLogin']);
 $router->post('/api/auth/register', [AuthController::class, 'register']);
 $router->post('/api/auth/login',    [AuthController::class, 'login']);
 $router->post('/api/auth/forgot-password', [AuthController::class, 'forgotPasswordOtp']);
