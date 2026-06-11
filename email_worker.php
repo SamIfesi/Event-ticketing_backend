@@ -41,7 +41,7 @@ $db->prepare("
     SET payment_status = 'failed'
     WHERE payment_status = 'pending'
       AND deleted_at IS NULL
-      AND created_at <= DATE_SUB(NOW(), INTERVAL 1 DAY)
+      AND created_at <= DATE_SUB(NOW(), INTERVAL 1 HOUR)
 ")->execute();
 
 $stmt = $db->prepare("
