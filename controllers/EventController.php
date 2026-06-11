@@ -84,7 +84,7 @@ class EventController
             LEFT JOIN categories  c ON c.id    = e.category_id
             LEFT JOIN v_event_sales s ON s.event_id = e.id
             WHERE {$where}
-            ORDER BY e.start_date ASC
+            ORDER BY CASE WHEN e.end_date < NOW() THEN 1 ELSE 0 END ASC, e.start_date ASC
             LIMIT ? OFFSET ?
         ");
     $stmt->execute($params);

@@ -404,7 +404,7 @@ class ProfileController
             JOIN bookings     b  ON b.id  = t.booking_id
             JOIN ticket_types tt ON tt.id = b.ticket_type_id
             WHERE {$where}
-            ORDER BY e.start_date ASC
+            ORDER BY t.created_at DESC
         ");
     $stmt->execute($params);
     $tickets = $stmt->fetchAll();
