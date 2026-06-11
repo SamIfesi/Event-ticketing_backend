@@ -247,6 +247,63 @@ class BookingController
     }
   }
 
+  public function resume(): void
+  {
+    $userId       = $this->request->user['id'];
+    $ticketTypeId = (int) $this->request->input('ticket_type_id');
+    $quantity     = max(1, (int) $this->request->input('quantity', 1));
+
+    // Look for a recent pending booking (within 45 minutes)
+    $stmt = $this->db->prepare("
+        SELECT b.*, tt.name AS ticket_type_name, e.title AS event_title
+        FROM bookings b
+        JOIN ticket_types tt ON tt.id = b.ticket_type_id
+        JOIN events e ON e.id = b.event_id
+        WHERE b.user_id        = ?
+          AND b.ticket_type_id = ?
+          AND b.quantity       = ?
+          AND b.payment_status = 'pending'
+          AND b.deleted_at     IS NULL
+          AND b.created_at     >= DATE_SUB(NOW(), INTERVAL 45 MINUTE)
+        ORDER BY b.created_at DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$userId, $ticketTypeId, $quantity]);
+    $existing = $stmt->fetch();
+
+    if (!$existing) {
+      Response::success(['has_pending' => false]);
+      return;
+    }
+
+    // Re-initialize with the same reference
+    try {
+      $paystack    = new PaystackService();
+      $userEmail   = $this->request->user['email'];
+      $transaction = $paystack->initializeTransaction(
+        $userEmail,
+        (float) $existing['total_amount'],
+        $existing['paystack_reference'],
+        [
+          'booking_id'  => $existing['id'],
+          'event_title' => $existing['event_title'],
+          'quantity'    => $existing['quantity'],
+        ]
+      );
+
+      Response::success([
+        'has_pending'   => true,
+        'booking_id'    => (int) $existing['id'],
+        'reference'     => $existing['paystack_reference'],
+        'amount'        => (float) $existing['total_amount'],
+        'access_code'   => $transaction['access_code'],
+      ]);
+    } catch (Exception $e) {
+      // Reference might be too old for Paystack — return no pending
+      Response::success(['has_pending' => false]);
+    }
+  }
+
   // ============================================================
   // POST /api/bookings/verify
   // Protected: attendee or dev
