@@ -1,8 +1,6 @@
 {
   "require": {
     "bacon/bacon-qr-code": "^3.1",
-    "phpmailer/phpmailer": "^7.0",
-    "resend/resend-php": "^1.3",
     "spatie/browsershot": "*"
   },
   "config": {
