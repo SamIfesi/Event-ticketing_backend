@@ -12,9 +12,11 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
+    libiconv-hook-dev \
     # Chromium and all its shared library dependencies
+    # NOTE: chromium-sandbox is bundled inside the chromium package on Debian;
+    # listing it separately causes an apt "unable to locate package" error.
     chromium \
-    chromium-sandbox \
     fonts-liberation \
     fonts-noto \
     fonts-noto-color-emoji \
@@ -35,6 +37,7 @@ RUN apt-get update && apt-get install -y \
     libxss1 \
     libxtst6 \
     xdg-utils \
+    cron \
     && rm -rf /var/lib/apt/lists/*
 
 # ── PHP extensions ────────────────────────────────────────────
@@ -47,7 +50,9 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
         zip \
         gd \
         opcache \
-        bcmath
+        bcmath \
+        iconv \
+        fileinfo
 
 # ── Node.js 20.x ──────────────────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
@@ -59,16 +64,19 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # ── Install Puppeteer globally ────────────────────────────────
-# This gives the node bridge script access to the puppeteer module
+# Pinned to 21.x to match what browsershot.js was written against.
+# npm -g on the nodesource Node 20 image installs to /usr/lib/node_modules.
 RUN npm install -g puppeteer@21.0.0 \
     && npm cache clean --force
+
+# ── Verify Puppeteer resolves correctly at build time ─────────
+RUN node -e "require('puppeteer'); console.log('puppeteer OK');"
 
 # ── Composer ──────────────────────────────────────────────────
 COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 
 # ── Apache config ─────────────────────────────────────────────
 RUN a2enmod rewrite
-
 RUN sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/apache2.conf
 
 # ── PHP config ────────────────────────────────────────────────
@@ -79,45 +87,64 @@ RUN echo "upload_max_filesize = 32M"          >> /usr/local/etc/php/conf.d/custo
     && echo "opcache.enable=1"                >> /usr/local/etc/php/conf.d/custom.ini \
     && echo "opcache.memory_consumption=128"  >> /usr/local/etc/php/conf.d/custom.ini
 
-# ── App files ─────────────────────────────────────────────────
 WORKDIR /var/www/html
 
-COPY . .
+# ── FIX 3: Cache-friendly Composer install ────────────────────
+# Copy only the dependency manifest files first so that composer install
+# is only re-run when composer.json or composer.lock actually changes.
+# A CSS edit will no longer bust this layer.
+COPY composer.json composer.lock ./
 
-# ── Composer install ──────────────────────────────────────────
 RUN composer install \
     --no-dev \
     --optimize-autoloader \
     --no-interaction \
     --no-progress
 
-# ── Make browsershot.js executable ───────────────────────────
-# This is the Node bridge script Spatie Browsershot calls
-RUN chmod +x /var/www/html/browsershot.js
+# ── Now copy the rest of the application ─────────────────────
+COPY . .
 
-# ── Symlink node_modules so browsershot.js can find puppeteer ─
-# Global npm installs go to /usr/lib/node_modules
-RUN ln -sf /usr/lib/node_modules /var/www/html/node_modules || true
+# ── Make browsershot.js executable ───────────────────────────
+RUN chmod +x /var/www/html/browsershot.js
 
 # ── Storage directories ───────────────────────────────────────
 RUN mkdir -p \
     storage/tickets \
     storage/qrcodes \
-    storage/tickets \
-    storage/banners \
-    && chown -R www-data:www-data storage \
-    && chmod -R 775 storage
+    storage/banners
 
-# ── Final permissions ─────────────────────────────────────────
+# ── FIX 2: Set base permissions first, then storage permissions last ──
+# Global 755 is applied to everything, then storage gets 775 overridden
+# on top so Apache/worker processes can write files. Order matters.
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html
+    && chmod -R 755 /var/www/html \
+    && chmod -R 775 storage \
+    && chown -R www-data:www-data storage
 
-# ── Environment ───────────────────────────────────────────────
+# ── Cron workers ──────────────────────────────────────────────
+# Copy the crontab into /etc/cron.d/ (system-wide cron drop-in location).
+# The entrypoint script starts cron as a background daemon before
+# handing control to apache2-foreground.
+COPY docker/crontab /etc/cron.d/ticketer-workers
+RUN chmod 0644 /etc/cron.d/ticketer-workers
+
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# ── FIX 1 & 4: Correct NODE_PATH + remove broken symlink ─────
+# NODE_PATH must point to the global node_modules directory, not the
+# node binary. With this set correctly, browsershot.js can resolve
+# require('puppeteer') without any symlink hack.
+# FIX 5: Removed the broken /dev/shm entrypoint script — Railway does
+# not grant SYS_ADMIN so the tmpfs mount silently fails. Pass
+# --disable-dev-shm-usage in your browsershot.js Chromium launch args
+# instead (in PHP: Browsershot::html(...)->setChromiumArguments([...]))
 ENV CHROMIUM_PATH=/usr/bin/chromium \
-    NODE_PATH=/usr/bin/node \
+    NODE_PATH=/usr/lib/node_modules \
     NPM_PATH=/usr/bin/npm \
     APACHE_DOCUMENT_ROOT=/var/www/html
 
 EXPOSE 80
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["apache2-foreground"]
