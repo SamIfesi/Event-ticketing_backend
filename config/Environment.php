@@ -27,8 +27,9 @@ class Environment
       $value = trim($value);
 
       // Remove quotes if present
-      if ((str_contains($value, '"') === 0 && strrpos($value, '"') === strlen($value) - 1) ||
-        (str_contains($value, "'") === 0 && strrpos($value, "'") === strlen($value) - 1)
+      if (
+        (str_starts_with($value, '"') && str_ends_with($value, '"')) ||
+        (str_starts_with($value, "'") && str_ends_with($value, "'"))
       ) {
         $value = substr($value, 1, -1);
       }
