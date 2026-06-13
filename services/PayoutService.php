@@ -76,17 +76,17 @@ class PayoutService
     int   $eventId,
     int   $organizerId,
     float $bookingAmount,
-    float $feePercentage
+    float $feePercentage,
+    string $eventEndDate
   ): void {
     $split = self::calculateSplit($bookingAmount, $feePercentage);
 
+    $holdHours = Constants::PAYOUT_HOLD_HOURS;
     $holdUntil = date(
       'Y-m-d H:i:s',
       strtotime(
-        '+' . Constants::PAYOUT_HOLD_HOURS . ' hours',
-        // We'll update hold_until properly when event ends
-        // For now use a far future date as placeholder
-        strtotime('+365 days')
+        "+{$holdHours} hours",
+        strtotime($eventEndDate)
       )
     );
 
@@ -118,11 +118,6 @@ class PayoutService
   // ============================================================
   public static function setHoldUntil(int $eventId, string $eventEndDate): void
   {
-    $holdUntil = date(
-      'Y-m-d H:i:s',
-      strtotime("+{Constants::PAYOUT_HOLD_HOURS} hours", strtotime($eventEndDate))
-    );
-
     // Use string interpolation properly for constants
     $holdHours = Constants::PAYOUT_HOLD_HOURS;
     $holdUntil = date(
