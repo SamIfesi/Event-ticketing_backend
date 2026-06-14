@@ -413,6 +413,17 @@ class BookingController
                 ");
         $updateStmt->execute([$booking['id']]);
 
+        // If no rows were updated, another request already processed this
+        if ($updateStmt->rowCount() === 0) {
+          $this->db->rollBack();
+          Response::success([
+            'booking_id'     => (int) $booking['id'],
+            'event'          => $booking['event_title'],
+            'tickets_issued' => (int) $booking['quantity'],
+          ], 'Booking already confirmed.');
+          return;
+        }
+
         // ── NEW: fee calculation + audit + notifications + payout accumulation ──
         $feePercent      = PayoutService::getFeePercentage((int)$booking['event_id'], (int)$booking['organizer_id']);
         $split           = PayoutService::calculateSplit((float)$booking['total_amount'], $feePercent);
@@ -426,6 +437,7 @@ class BookingController
 
         PayoutService::accumulateRevenue(
           (int)   $booking['event_id'],
+          (int)   $booking['id'],
           (int)   $booking['organizer_id'],
           (float) $booking['total_amount'],
           $feePercent
@@ -473,17 +485,6 @@ class BookingController
           }
         }
         // ── END NEW ──
-
-        // If no rows were updated, another request already processed this
-        if ($updateStmt->rowCount() === 0) {
-          $this->db->rollBack();
-          Response::success([
-            'booking_id'     => (int) $booking['id'],
-            'event'          => $booking['event_title'],
-            'tickets_issued' => (int) $booking['quantity'],
-          ], 'Booking already confirmed.');
-          return;
-        }
 
         // 9. Issue one ticket row per quantity purchased
         $tickets = [];
