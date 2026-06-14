@@ -77,9 +77,13 @@ class PayoutService
     int   $organizerId,
     float $bookingAmount,
     float $feePercentage,
-    string $eventEndDate
   ): void {
     $split = self::calculateSplit($bookingAmount, $feePercentage);
+    $stmt = self::db()->prepare("SELECT id FROM event_payouts WHERE event_id = ?");
+    $stmt->execute([$eventId]);
+    $event = $stmt->fetch();
+
+    $eventEndDate = $event['end_date'] ?? date('Y-m-d H:i:s', strtotime('+1 day'));
 
     $holdHours = Constants::PAYOUT_HOLD_HOURS;
     $holdUntil = date(
