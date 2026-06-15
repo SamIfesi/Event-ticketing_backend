@@ -1,7 +1,7 @@
 <?php
 
 // Attendee routes
-$router->post('/api/bookings/resume', [BookingController::class, 'store'],         [AuthMiddleware::class]);
+$router->post('/api/bookings/resume', [BookingController::class, 'resume'],         [AuthMiddleware::class]);
 $router->post('/api/bookings',        [BookingController::class, 'store'],         [AuthMiddleware::class]);
 $router->post('/api/bookings/verify', [BookingController::class, 'verify'],        [AuthMiddleware::class]);
 $router->get('/api/bookings/mine',    [BookingController::class, 'myBookings'],    [AuthMiddleware::class]);
