@@ -9,5 +9,4 @@ $router->post('/api/events',          [EventController::class, 'store'],    [Aut
 $router->put('/api/events/:id',      [EventController::class, 'update'],   [AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'dev']]);
 $router->delete('/api/events/:id',      [EventController::class, 'destroy'],  [AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'admin', 'dev']]);
 $router->get('/api/organizer/events', [EventController::class, 'myEvents'], [AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'admin', 'dev']]);
-$router->delete('/api/events/:id',      [EventController::class, 'destroy'],  [AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'admin', 'dev']]);
 $router->get('/api/organizer/events/:id', [EventController::class, 'showOwn'], [AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'admin', 'dev']]);
