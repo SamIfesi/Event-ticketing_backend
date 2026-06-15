@@ -220,7 +220,7 @@ class TicketController
       'attendee_name' => $ticket['attendee_name'],
       'ticket_type'   => $ticket['ticket_type'],
       'event_title'   => $ticket['event_title'],
-      'status'        => $ticket['status'],
+      'status'        => $ticket['is_used'] ? 'used' : 'valid',
       'checked_in_at' => date('d M Y, g:ia'),
     ], 'Valid ticket. Attendee checked in successfully.');
   }
