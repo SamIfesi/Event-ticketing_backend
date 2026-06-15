@@ -464,23 +464,22 @@ class BookingController
 
         // Low tickets warning — fires if ≤10% tickets remain
         $salesStmt = $this->db->prepare("
-            SELECT tt.quantity, COALESCE(s.tickets_sold,0) AS sold
-            FROM ticket_types tt
-            LEFT JOIN v_event_sales s ON s.event_id = tt.event_id
-            WHERE tt.id = ?
+            SELECT quantity, quantity_sold
+            FROM ticket_types
+            WHERE id = ?
         ");
         $salesStmt->execute([$booking['ticket_type_id']]);
         $sales = $salesStmt->fetch();
         if ($sales) {
-          $remaining = (int)$sales['quantity'] - (int)$sales['sold'];
+          $remaining = (int) $sales['quantity'] - (int) $sales['quantity_sold'];
           $pct = $sales['quantity'] > 0 ? ($remaining / $sales['quantity']) : 1;
           if ($pct <= 0.10 && $remaining > 0) {
             NotificationService::lowTicketsWarning(
-              (int)$booking['organizer_id'],
-              (int)$booking['event_id'],
+              (int) $booking['organizer_id'],
+              (int) $booking['event_id'],
               $booking['event_title'],
               $remaining,
-              (int)$sales['quantity']
+              (int) $sales['quantity']
             );
           }
         }
