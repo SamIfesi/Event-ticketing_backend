@@ -6,7 +6,7 @@ use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
 use BaconQrCode\Writer;
 
-class QRCOdeService
+class QRCodeService
 {
   public static function generate(string $qrToken): string
   {
