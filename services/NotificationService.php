@@ -64,6 +64,7 @@ class NotificationService
   public static function bookingFailed(
     int    $userId,
     int    $bookingId,
+    int    $eventId,
     string $eventTitle
   ): void {
     self::push(
@@ -71,7 +72,7 @@ class NotificationService
       'booking_failed',
       "Payment Failed — {$eventTitle}",
       "Your payment for {$eventTitle} could not be completed. No money has been charged. Please try again.",
-      "/events/{$eventTitle}",
+      "/events/{$eventId}",
       $bookingId,
       'booking'
     );
