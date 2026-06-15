@@ -383,7 +383,7 @@ class BookingController
 
         // ── NEW ── log failed transaction and notify user
         TransactionService::paymentFailed($booking, 'Paystack returned: ' . $transaction['status']);
-        NotificationService::bookingFailed((int)$booking['user_id'], (int)$booking['id'], $booking['event_title']);
+        NotificationService::bookingFailed((int)$booking['user_id'], (int)$booking['id'], (int)$booking['event_id'], $booking['event_title']);
         // ── END NEW ──
 
         Response::error('Payment was not successful. Please try again.', 400);
