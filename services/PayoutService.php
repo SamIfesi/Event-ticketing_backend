@@ -76,7 +76,7 @@ class PayoutService
     int   $eventId,
     int   $organizerId,
     float $bookingAmount,
-    float $feePercentage,
+    float $feePercentage
   ): void {
     $split = self::calculateSplit($bookingAmount, $feePercentage);
     $stmt = self::db()->prepare("SELECT id FROM event_payouts WHERE event_id = ?");

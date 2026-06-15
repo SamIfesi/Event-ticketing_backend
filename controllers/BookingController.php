@@ -425,8 +425,9 @@ class BookingController
         }
 
         // ── NEW: fee calculation + audit + notifications + payout accumulation ──
-        $feePercent      = PayoutService::getFeePercentage((int)$booking['event_id'], (int)$booking['organizer_id']);
-        $split           = PayoutService::calculateSplit((float)$booking['total_amount'], $feePercent);
+        $feePercentage      = PayoutService::getFeePercentage((int)$booking['event_id'], (int)$booking['organizer_id']);
+        $split           = PayoutService::calculateSplit((float)$booking['total_amount'], $feePercentage);
+
 
         TransactionService::paymentConfirmed(
           $booking,
@@ -437,10 +438,9 @@ class BookingController
 
         PayoutService::accumulateRevenue(
           (int)   $booking['event_id'],
-          (int)   $booking['id'],
           (int)   $booking['organizer_id'],
           (float) $booking['total_amount'],
-          $feePercent
+          (float) $feePercentage
         );
 
         NotificationService::bookingConfirmed(
