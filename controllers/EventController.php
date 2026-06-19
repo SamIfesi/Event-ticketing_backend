@@ -441,7 +441,7 @@ class EventController
       'event_cancelled',
       "Event Cancelled — {$event['title']}",
       "{$event['title']} has been cancelled by the organizer. Please contact support if you need a refund.",
-      "/bookings"
+      "/my-bookings"
     );
     // ── END NEW ──
 
