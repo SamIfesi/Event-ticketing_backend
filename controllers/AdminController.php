@@ -318,7 +318,7 @@ class AdminController
         'event_cancelled',
         "Event Cancelled - {$evtTitle}",
         "{$evtTitle} has been cancelled. Please contact support for your refund",
-        "/bookings"
+        "/my-bookings"
       );
       PayoutService::cancelPayout($eventId);
     }
