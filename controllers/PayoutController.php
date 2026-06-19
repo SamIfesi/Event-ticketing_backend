@@ -234,20 +234,26 @@ class PayoutController
 
     foreach ($bookings as $booking) {
       try {
-        // Trigger Paystack refund
-        $paystack->refundTransaction($booking['paystack_reference']);
+        // Trigger Paystack refund — capture the response
+        $refundData = $paystack->refundTransaction($booking['paystack_reference']);
+
+        // Paystack returns a refund ID — build a traceable reference
+        $refundReference = 'REF-' . ($refundData['id'] ?? uniqid());
 
         // Mark booking as refunded
         $this->db->prepare("
-                    UPDATE bookings
-                    SET payment_status = 'refunded', refunded_at = NOW()
-                    WHERE id = ?
-                ")->execute([$booking['id']]);
+            UPDATE bookings
+            SET payment_status = 'refunded', refunded_at = NOW()
+            WHERE id = ?
+        ")->execute([$booking['id']]);
 
-        // Immutable audit log entry
-        TransactionService::refundProcessed($booking, $adminId, $note);
+        // Pass refund reference into the note for full traceability
+        TransactionService::refundProcessed(
+          $booking,
+          $adminId,
+          $note . " | Paystack Refund ID: {$refundReference} | Original ref: {$booking['paystack_reference']}"
+        );
 
-        // Notify the attendee
         NotificationService::eventCancelled(
           (int) $booking['user_id'],
           $eventId,
