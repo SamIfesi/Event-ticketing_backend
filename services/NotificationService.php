@@ -45,7 +45,6 @@ class NotificationService
     int    $userId,
     int    $bookingId,
     string $eventTitle,
-    int    $eventId,
     int    $quantity,
     float  $totalAmount
   ): void {
@@ -88,7 +87,7 @@ class NotificationService
       'ticket_checkin',
       "Checked In — {$eventTitle}",
       "Your ticket was scanned and you've been checked in to {$eventTitle}. Enjoy the event!",
-      "/tickets/{$ticketId}",
+      "/ticket/{$ticketId}",
       $ticketId,
       'ticket'
     );
@@ -104,7 +103,7 @@ class NotificationService
       'event_cancelled',
       "Event Cancelled — {$eventTitle}",
       "{$eventTitle} has been cancelled. Please contact support if you need a refund.",
-      "/bookings",
+      "/my-bookings",
       $eventId,
       'event'
     );
@@ -210,7 +209,7 @@ class NotificationService
       'payout_sent',
       "Payout Sent — {$eventTitle}",
       "Your payout of {$formatted} for {$eventTitle} has been sent to your bank account. It should arrive within 1-2 business days.",
-      "/organizer/payouts",
+      "/organizer/payment-details",
       $eventId,
       'event'
     );
@@ -244,7 +243,7 @@ class NotificationService
       'payout_frozen',
       "Payout Frozen — {$eventTitle}",
       "Your payout for {$eventTitle} has been temporarily frozen pending review. " . ($reason ?: 'Please contact support for more information.'),
-      "/organizer/payouts",
+      "/organizer/payment-details",
       $eventId,
       'event'
     );
