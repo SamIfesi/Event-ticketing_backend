@@ -231,6 +231,7 @@ class AdminController
             SELECT
                 e.id,
                 e.title,
+                e.banner_image,
                 e.status,
                 e.start_date,
                 e.total_tickets,
