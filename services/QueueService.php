@@ -73,7 +73,7 @@ class QueueService
     ]);
   }
 
-  public static function sendForgotPasswordOtp(string $email, string $name, string $otp): void
+  public static function sendForgotPasswordOTP(string $email, string $name, string $otp): void
   {
     self::push('send_forgot_password_otp', [
       'email' => $email,

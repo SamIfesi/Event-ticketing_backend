@@ -17,7 +17,7 @@
 
 declare(strict_types=1);
 
-set_time_limit(60);        // 1 minute max — should never need more for emails
+set_time_limit(120);        // 1 minute max — should never need more for emails
 ini_set('memory_limit', '64M');
 
 require_once __DIR__ . '/config/Environment.php';
