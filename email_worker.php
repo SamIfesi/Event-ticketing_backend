@@ -104,7 +104,8 @@ foreach ($jobs as $job) {
           $payload['ticket_type'],
           $payload['quantity'],
           $payload['total_amount'],
-          $payload['dashboard_url']
+          $payload['dashboard_url'],
+          $payload['booking_reference']
         );
         break;
 
