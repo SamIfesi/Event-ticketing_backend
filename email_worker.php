@@ -95,6 +95,7 @@ foreach ($jobs as $job) {
 
       // ── Ticket purchase confirmation ──────────────────────────
       case 'send_ticket_confirmation':
+        $bookingRef = $payload['booking_reference'] ?? '';
         $success = $mailer->sendTicketConfirmation(
           $payload['email'],
           $payload['name'],
@@ -105,7 +106,7 @@ foreach ($jobs as $job) {
           $payload['quantity'],
           $payload['total_amount'],
           $payload['dashboard_url'],
-          $payload['booking_reference']
+          $bookingRef ? "booking-{$bookingRef}-confirm" : ''
         );
         break;
 
@@ -127,7 +128,7 @@ foreach ($jobs as $job) {
 
       // ── Forgot password OTP ─────────────────────────
       case 'send_forgot_password_otp':
-        $success = $mailer->sendForgotPasswordOtp(
+        $success = $mailer->sendForgotPasswordOTP(
           $payload['email'],
           $payload['name'],
           $payload['otp']
