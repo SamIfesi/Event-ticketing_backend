@@ -91,7 +91,8 @@ class QueueService
     string $ticketType,
     int    $quantity,
     float  $totalAmount,
-    string $dashboardUrl
+    string $dashboardUrl,
+    string $bookingReference
   ): void {
     self::push('send_ticket_confirmation', [
       'email'          => $email,
@@ -103,6 +104,7 @@ class QueueService
       'quantity'       => $quantity,
       'total_amount'   => $totalAmount,
       'dashboard_url'  => $dashboardUrl,
+      'booking_reference' => $bookingReference,
     ], 0, 'email');
   }
 
