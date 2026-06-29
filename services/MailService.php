@@ -3,19 +3,25 @@
 /**
  * MailService
  *
- * Sends transactional emails via the Resend API.
+ * Sends transactional emails via the SendByte/Resend API.
+ * Same code path for development and production — only the
+ * .env values change between environments.
  *
  * ENV variables needed:
- *   RESEND_API_KEY       — from resend.com dashboard
+ *   SENDBYTE_API_KEY     — from your SendByte dashboard (sk_test_... in dev, sk_live_... in prod)
+ *   MAIL_API_URL         — SendByte endpoint, defaults to https://api.sendbyte.africa/v1/emails
  *   MAIL_FROM_ADDRESS    — verified sender e.g. no-reply@ticketer.ng
  *   MAIL_FROM_NAME       — display name e.g. Ticketer
  *   MAIL_LOGO_URL        — full Cloudinary URL to your logo image
  *   APP_NAME             — Ticketer
  *   APP_URL              — https://yourapp.com
+ *
+ * To rotate keys or switch environments: only touch .env, never this file.
  */
 class MailService
 {
   private string $apiKey;
+  private string $apiUrl;
   private string $fromEmail;
   private string $fromName;
   private string $appName;
@@ -28,7 +34,8 @@ class MailService
 
   public function __construct()
   {
-    $this->apiKey    = Environment::get('RESEND_API_KEY');
+    $this->apiKey    = Environment::get('SENDBYTE_API_KEY');
+    $this->apiUrl    = Environment::get('MAIL_API_URL',      'https://api.sendbyte.africa/v1/emails');
     $this->fromEmail = Environment::get('MAIL_FROM_ADDRESS', 'no-reply@ticketer.ng');
     $this->fromName  = Environment::get('MAIL_FROM_NAME',    'Ticketer');
     $this->appName   = Environment::get('APP_NAME',          'Ticketer');
@@ -140,7 +147,8 @@ class MailService
     string $ticketType,
     int    $quantity,
     float  $totalAmount,
-    string $dashboardUrl
+    string $dashboardUrl,
+    string $bookingReference = ''
   ): bool {
     $formattedAmount = '&#8358;' . number_format($totalAmount, 2);
     $formattedDate   = date('D, d M Y \a\t g:ia', strtotime($eventDate));
@@ -167,7 +175,9 @@ class MailService
         "You're going! &#127881;",
         "Your payment was successful and your tickets have been issued.",
         $body
-      )
+      ),
+      '',
+      $bookingReference ? "booking-{$bookingReference}-confirm" : ''
     );
   }
 
@@ -196,27 +206,36 @@ class MailService
   }
 
   // ============================================================
-  // PRIVATE — Resend API call
+  // PRIVATE — SendByte API call
   // ============================================================
   private function send(
     string $toEmail,
     string $toName,
     string $subject,
-    string $html
+    string $html,
+    string $text           = '',
+    string $idempotencyKey = ''
   ): bool {
     if (empty($this->apiKey)) {
-      error_log('MailService: RESEND_API_KEY is not set.');
+      error_log('MailService: SENDBYTE_API_KEY is not set.');
       return false;
     }
 
-    $payload = json_encode([
+    $body = [
       'from'    => "{$this->fromName} <{$this->fromEmail}>",
-      'to'      => ["{$toName} <{$toEmail}>"],
+      'to'      => $toEmail,
       'subject' => $subject,
       'html'    => $html,
-    ]);
+      'text'    => $text ?: strip_tags($html),
+    ];
 
-    $ch = curl_init('https://api.resend.com/emails');
+    if (!empty($idempotencyKey)) {
+      $body['idempotency_key'] = $idempotencyKey;
+    }
+
+    $payload = json_encode($body);
+
+    $ch = curl_init($this->apiUrl);
     curl_setopt_array($ch, [
       CURLOPT_RETURNTRANSFER => true,
       CURLOPT_POST           => true,
@@ -239,7 +258,7 @@ class MailService
     }
 
     if ($httpCode < 200 || $httpCode >= 300) {
-      error_log('MailService Resend error: HTTP ' . $httpCode . ' — ' . $response);
+      error_log('MailService SendByte error: HTTP ' . $httpCode . ' — ' . $response);
       return false;
     }
 
