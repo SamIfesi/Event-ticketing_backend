@@ -1,6 +1,18 @@
 #!/bin/bash
 set -e
 
+# Laravel checks for a physical .env file on disk at boot in some setups.
+# Railway injects config as real OS environment variables instead of a
+# file, which Laravel's env()/config() helpers read fine on their own —
+# but the file_exists() guard some apps have still needs a file present.
+# An empty file satisfies the check without duplicating the 24 Railway
+# variables already injected into the process environment.
+if [ ! -f /var/www/html/.env ]; then
+    echo "=== No .env file found, creating empty placeholder (Railway vars are injected via process env) ==="
+    touch /var/www/html/.env
+    chown www-data:www-data /var/www/html/.env
+fi
+
 # Railway injects $PORT and routes traffic there. Default to 80 if unset
 # (e.g. running locally without Railway's env).
 PORT="${PORT:-80}"
