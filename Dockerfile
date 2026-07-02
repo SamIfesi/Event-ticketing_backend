@@ -90,9 +90,11 @@ RUN node -e "require('puppeteer'); console.log('puppeteer OK');"
 COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 
 # ── Apache config ─────────────────────────────────────────────
-RUN a2enmod rewrite
-RUN a2dismod mpm_event mpm_worker 2>/dev/null; a2enmod mpm_prefork
-RUN sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/apache2.conf
+RUN rm -f /etc/apache2/mods-enabled/mpm_event.load \
+          /etc/apache2/mods-enabled/mpm_event.conf \
+          /etc/apache2/mods-enabled/mpm_worker.load \
+          /etc/apache2/mods-enabled/mpm_worker.conf \
+    && a2enmod mpm_prefork rewrite
 RUN sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/apache2.conf
 
 # ── PHP config ────────────────────────────────────────────────
