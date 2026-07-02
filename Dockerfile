@@ -84,14 +84,20 @@ RUN node -e "require('puppeteer'); console.log('puppeteer OK');"
 COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 
 # ── Apache config ─────────────────────────────────────────────
-# Force-remove any conflicting MPM modules that apt may have enabled
-# alongside the default mpm_prefork (which mod_php requires). Apache
-# refuses to start if more than one MPM is loaded at once.
-RUN rm -f /etc/apache2/mods-enabled/mpm_event.load \
-          /etc/apache2/mods-enabled/mpm_event.conf \
-          /etc/apache2/mods-enabled/mpm_worker.load \
-          /etc/apache2/mods-enabled/mpm_worker.conf \
-    && a2enmod mpm_prefork rewrite
+# Use a2dismod (not raw rm -f) so Apache's own module bookkeeping stays
+# consistent — rm -f only deletes symlinks and can miss files depending
+# on Debian version. The `; true` lets this succeed even if a given
+# MPM was never enabled to begin with.
+RUN a2dismod mpm_event mpm_worker 2>/dev/null; true \
+    && a2enmod mpm_prefork rewrite \
+    && MPM_COUNT=$(apache2ctl -M 2>/dev/null | grep -c mpm_) \
+    && echo "Enabled MPM count: $MPM_COUNT" \
+    && if [ "$MPM_COUNT" -ne 1 ]; then \
+         echo "FATAL: expected exactly 1 MPM, found $MPM_COUNT" >&2; \
+         apache2ctl -M; \
+         exit 1; \
+       fi
+
 RUN sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/apache2.conf
 
 # ── PHP config ────────────────────────────────────────────────
