@@ -59,15 +59,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# set NODE_PATH before installing global packages 
-# ── FIX 1 & 4: Correct NODE_PATH + remove broken symlink ─────
-# NODE_PATH must point to the global node_modules directory, not the
-# node binary. With this set correctly, browsershot.js can resolve
-# require('puppeteer') without any symlink hack.
-# FIX 5: Removed the broken /dev/shm entrypoint script — Railway does
-# not grant SYS_ADMIN so the tmpfs mount silently fails. Pass
-# --disable-dev-shm-usage in your browsershot.js Chromium launch args
-# instead (in PHP: Browsershot::html(...)->setChromiumArguments([...]))
+# ── Runtime env vars (must be set BEFORE installing global npm ──
+# packages, otherwise `node -e "require('puppeteer')"` below can't
+# resolve the module — NODE_PATH has to exist at install/verify time) ──
 ENV CHROMIUM_PATH=/usr/bin/chromium \
     NODE_PATH=/usr/lib/node_modules \
     NPM_PATH=/usr/bin/npm \
@@ -90,11 +84,15 @@ RUN node -e "require('puppeteer'); console.log('puppeteer OK');"
 COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 
 # ── Apache config ─────────────────────────────────────────────
+# Force-remove any conflicting MPM modules that apt may have enabled
+# alongside the default mpm_prefork (which mod_php requires). Apache
+# refuses to start if more than one MPM is loaded at once.
 RUN rm -f /etc/apache2/mods-enabled/mpm_event.load \
           /etc/apache2/mods-enabled/mpm_event.conf \
           /etc/apache2/mods-enabled/mpm_worker.load \
           /etc/apache2/mods-enabled/mpm_worker.conf \
     && a2enmod mpm_prefork rewrite
+RUN sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/apache2.conf
 
 # ── PHP config ────────────────────────────────────────────────
 RUN echo "upload_max_filesize = 32M"          >> /usr/local/etc/php/conf.d/custom.ini \
@@ -106,7 +104,7 @@ RUN echo "upload_max_filesize = 32M"          >> /usr/local/etc/php/conf.d/custo
 
 WORKDIR /var/www/html
 
-# ── FIX 3: Cache-friendly Composer install ────────────────────
+# ── Cache-friendly Composer install ────────────────────────────
 # Copy only the dependency manifest files first so that composer install
 # is only re-run when composer.json or composer.lock actually changes.
 # A CSS edit will no longer bust this layer.
@@ -125,12 +123,13 @@ COPY . .
 RUN chmod +x /var/www/html/browsershot.js
 
 # ── Storage directories ───────────────────────────────────────
+# Banners live on Cloudinary, so no local storage/banners needed.
 RUN mkdir -p \
     storage/tickets \
     storage/qrcodes \
-    storage/logs 
+    storage/logs
 
-# ── FIX 2: Set base permissions first, then storage permissions last ──
+# ── Set base permissions first, then storage permissions last ──
 # Global 755 is applied to everything, then storage gets 775 overridden
 # on top so Apache/worker processes can write files. Order matters.
 RUN chown -R www-data:www-data /var/www/html \
