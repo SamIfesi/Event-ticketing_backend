@@ -88,6 +88,10 @@ COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 # consistent — rm -f only deletes symlinks and can miss files depending
 # on Debian version. The `; true` lets this succeed even if a given
 # MPM was never enabled to begin with.
+#
+# The MPM_COUNT check makes the BUILD ITSELF fail if more than one MPM
+# ends up enabled, instead of deploying successfully and crashing at
+# runtime with AH00534. Catch it here, not in production logs.
 RUN a2dismod mpm_event mpm_worker 2>/dev/null; true \
     && a2enmod mpm_prefork rewrite \
     && MPM_COUNT=$(apache2ctl -M 2>/dev/null | grep -c mpm_) \
