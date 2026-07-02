@@ -59,6 +59,20 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# set NODE_PATH before installing global packages 
+# ── FIX 1 & 4: Correct NODE_PATH + remove broken symlink ─────
+# NODE_PATH must point to the global node_modules directory, not the
+# node binary. With this set correctly, browsershot.js can resolve
+# require('puppeteer') without any symlink hack.
+# FIX 5: Removed the broken /dev/shm entrypoint script — Railway does
+# not grant SYS_ADMIN so the tmpfs mount silently fails. Pass
+# --disable-dev-shm-usage in your browsershot.js Chromium launch args
+# instead (in PHP: Browsershot::html(...)->setChromiumArguments([...]))
+ENV CHROMIUM_PATH=/usr/bin/chromium \
+    NODE_PATH=/usr/lib/node_modules \
+    NPM_PATH=/usr/bin/npm \
+    APACHE_DOCUMENT_ROOT=/var/www/html
+
 # ── Tell Puppeteer to use system Chromium, not download its own ──
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
@@ -111,7 +125,7 @@ RUN chmod +x /var/www/html/browsershot.js
 RUN mkdir -p \
     storage/tickets \
     storage/qrcodes \
-    storage/banners
+    storage/logs 
 
 # ── FIX 2: Set base permissions first, then storage permissions last ──
 # Global 755 is applied to everything, then storage gets 775 overridden
@@ -130,19 +144,6 @@ RUN chmod 0644 /etc/cron.d/ticketer-workers
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-
-# ── FIX 1 & 4: Correct NODE_PATH + remove broken symlink ─────
-# NODE_PATH must point to the global node_modules directory, not the
-# node binary. With this set correctly, browsershot.js can resolve
-# require('puppeteer') without any symlink hack.
-# FIX 5: Removed the broken /dev/shm entrypoint script — Railway does
-# not grant SYS_ADMIN so the tmpfs mount silently fails. Pass
-# --disable-dev-shm-usage in your browsershot.js Chromium launch args
-# instead (in PHP: Browsershot::html(...)->setChromiumArguments([...]))
-ENV CHROMIUM_PATH=/usr/bin/chromium \
-    NODE_PATH=/usr/lib/node_modules \
-    NPM_PATH=/usr/bin/npm \
-    APACHE_DOCUMENT_ROOT=/var/www/html
 
 EXPOSE 80
 
