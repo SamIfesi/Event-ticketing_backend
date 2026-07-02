@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# Railway injects $PORT and routes traffic there. Default to 80 if unset
+# (e.g. running locally without Railway's env).
+PORT="${PORT:-80}"
+echo "=== Configuring Apache to listen on port $PORT ==="
+sed -i "s/^Listen .*/Listen ${PORT}/" /etc/apache2/ports.conf
+sed -i "s/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-enabled/000-default.conf
+
 echo "=== BEFORE fix: mods-enabled mpm state ==="
 ls -la /etc/apache2/mods-enabled/ | grep -i mpm || echo "no mpm symlinks found"
 
