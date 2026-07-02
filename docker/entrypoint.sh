@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
 
-# Start cron in the background
-service cron start
+echo "=== Enabled Apache modules ==="
+apache2ctl -M 2>&1 || true
+echo "==============================="
 
-# Hand off to the main container command (apache2-foreground)
+service cron start
 exec "$@"
