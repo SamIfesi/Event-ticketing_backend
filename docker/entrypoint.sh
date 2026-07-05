@@ -55,9 +55,22 @@ cat -A "$CRONFILE"
 # the "SQLSTATE[HY000] [2002] No such file or directory" errors seen
 # in the worker logs. Dump the real environment to a file cron jobs
 # can source before running, so they see the same vars Apache does.
-export -p > /container_env.sh
+#
+# IMPORTANT: /etc/cron.d/ jobs run under /bin/sh (dash on Debian), not
+# bash. `export -p` produces bash-only `declare -x` syntax, which dash
+# can't parse — it fails silently and the vars never actually get set.
+# Write plain POSIX `export VAR='value'` lines instead, which both
+# dash and bash can source correctly.
+: > /container_env.sh
+while IFS='=' read -r -d '' key value; do
+    case "$key" in
+        BASH_FUNC_*|_|PWD|OLDPWD|SHLVL) continue ;;
+    esac
+    escaped=$(printf '%s' "$value" | sed "s/'/'\\\\''/g")
+    echo "export $key='$escaped'" >> /container_env.sh
+done < <(env -0)
 chmod 644 /container_env.sh
-echo "=== Wrote container environment for cron jobs to source ==="
+echo "=== Wrote POSIX-compatible container environment for cron jobs to source ==="
 
 service cron start
 exec "$@"
