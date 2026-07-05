@@ -1,7 +1,7 @@
 <?php
 
-use BaconQrCode\Renderer\Image\ImagickImageBackend;
-use BaconQrCode\Renderer\Image\SvgImageBackend;
+use BaconQrCode\Renderer\Image\ImagickImageBackEnd;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
 use BaconQrCode\Writer;
@@ -22,7 +22,7 @@ class QRCodeService
     }
     $renderer = new ImageRenderer(
       new RendererStyle(300),
-      new SvgImageBackend()
+      new SvgImageBackEnd()
     );
 
     $writer = new Writer($renderer);
