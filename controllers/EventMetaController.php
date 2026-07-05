@@ -2,8 +2,10 @@
 
 class EventMetaController
 {
-  public static function show(string $id): void
+  public static function show(array $params): void
   {
+    $eventId = (int) $params['id'];
+
     $db = Database::connect();
 
     $stmt = $db->prepare("
@@ -12,7 +14,7 @@ class EventMetaController
       WHERE id = ? AND deleted_at IS NULL
       LIMIT 1
     ");
-    $stmt->execute([$id]);
+    $stmt->execute([$eventId]);
     $event = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$event) {
