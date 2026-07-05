@@ -10,3 +10,5 @@ $router->put('/api/events/:id',      [EventController::class, 'update'],   [Auth
 $router->delete('/api/events/:id',      [EventController::class, 'destroy'],  [AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'admin', 'dev']]);
 $router->get('/api/organizer/events', [EventController::class, 'myEvents'], [AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'admin', 'dev']]);
 $router->get('/api/organizer/events/:id', [EventController::class, 'showOwn'], [AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'admin', 'dev']]);
+
+$router->get('/api/events/:slug/meta', [EventMetaController::class, 'show']);
