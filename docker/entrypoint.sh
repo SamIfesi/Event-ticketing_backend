@@ -34,5 +34,17 @@ ls -la /etc/apache2/mods-enabled/ | grep -i mpm || echo "no mpm symlinks found"
 echo "=== apache2ctl -M after runtime fix ==="
 apache2ctl -M 2>&1 || true
 
+# /etc/cron.d/ files can be silently rejected by cron if they don't end
+# with a trailing newline (a common gotcha with files edited via web
+# editors like GitHub's, which don't always make it obvious whether one
+# is present). Force one here so we never depend on git/editor behavior.
+CRONFILE="/etc/cron.d/ticketer-workers"
+if [ -f "$CRONFILE" ] && [ -n "$(tail -c 1 "$CRONFILE")" ]; then
+    echo "=== Crontab missing trailing newline, fixing ==="
+    echo "" >> "$CRONFILE"
+fi
+echo "=== Final crontab content (with visible line endings) ==="
+cat -A "$CRONFILE"
+
 service cron start
 exec "$@"
