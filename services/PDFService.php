@@ -112,7 +112,7 @@ class PDFService
 
     // ── Browsershot config ────────────────────────────────
     $chromiumPath = Environment::get('CHROMIUM_PATH', '/usr/bin/chromium');
-    $nodePath     = Environment::get('NODE_PATH',     '/usr/bin/node');
+    $nodePath     = Environment::get('NODE_BINARY_PATH',     '/usr/bin/node');
     $npmPath      = Environment::get('NPM_PATH',      '/usr/bin/npm');
 
     $filePaths = [];
