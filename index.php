@@ -66,6 +66,7 @@ require_once __DIR__ . '/controllers/OrganizerPaymentController.php';
 require_once __DIR__ . '/controllers/PDFController.php';
 require_once __DIR__ . '/controllers/CloudinaryController.php';
 require_once __DIR__ . '/controllers/GoogleAuthController.php';
+require_once __DIR__ . '/controllers/EventMetaController.php';
 
 // ============================================================
 // 3. BOOTSTRAP
