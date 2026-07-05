@@ -46,5 +46,18 @@ fi
 echo "=== Final crontab content (with visible line endings) ==="
 cat -A "$CRONFILE"
 
+# Cron spawns jobs with a minimal environment — Railway's injected vars
+# (DATABASE_HOST, PAYSTACK_SECRET_KEY, etc.) are NOT visible to them,
+# even though they ARE visible to Apache/PHP-CLI run interactively.
+# This causes Environment::get() to silently fall back to defaults
+# (e.g. 'localhost' for DB host), which then makes PDO try a local
+# Unix socket instead of a real TCP connection — the exact cause of
+# the "SQLSTATE[HY000] [2002] No such file or directory" errors seen
+# in the worker logs. Dump the real environment to a file cron jobs
+# can source before running, so they see the same vars Apache does.
+export -p > /container_env.sh
+chmod 644 /container_env.sh
+echo "=== Wrote container environment for cron jobs to source ==="
+
 service cron start
 exec "$@"
