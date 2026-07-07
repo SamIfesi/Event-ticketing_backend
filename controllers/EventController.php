@@ -102,12 +102,15 @@ class EventController
 
   // ============================================================
   // GET /api/events/:id
+  // GET /api/events/:slug
   //
   // FIX #3: Replaced e.tickets_sold with v_event_sales join.
   // ============================================================
   public function show(array $params): void
   {
-    $eventId = (int) $params['id'];
+    $identifier = $params['id'];
+    $isNumeric = ctype_digit((string) $identifier);
+    $column    = $isNumeric ? 'e.id' : 'e.slug';
 
     $stmt = $this->db->prepare("
             SELECT
@@ -125,19 +128,20 @@ class EventController
                 COALESCE(s.tickets_sold, 0)      AS tickets_sold,
                 COALESCE(s.tickets_available, 0)  AS tickets_available,
                 COALESCE(s.total_revenue, 0)      AS total_revenue,
-                u.id    AS organizer_id,
-                u.name  AS organizer_name,
-                c.name  AS category_name,
-                c.icon  AS category_icon
+                u.id     AS organizer_id,
+                u.name   AS organizer_name,
+                u.avatar AS organizer_avatar,
+                c.name   AS category_name,
+                c.icon   AS category_icon
             FROM events e
             JOIN users       u ON u.id = e.organizer_id
             LEFT JOIN categories  c ON c.id    = e.category_id
             LEFT JOIN v_event_sales s ON s.event_id = e.id
-            WHERE e.id = ?
+            WHERE {$column} = ?
               AND e.status = 'published'
               AND e.deleted_at IS NULL
         ");
-    $stmt->execute([$eventId]);
+    $stmt->execute([$identifier]);
     $event = $stmt->fetch();
 
     if (!$event) {
@@ -151,7 +155,7 @@ class EventController
             WHERE event_id = ?
             ORDER BY price ASC
         ");
-    $stmt->execute([$eventId]);
+    $stmt->execute([$event['id']]);
     $ticketTypes = $stmt->fetchAll();
 
     // Add available count to each ticket type
