@@ -130,7 +130,6 @@ class EventController
                 COALESCE(s.total_revenue, 0)      AS total_revenue,
                 u.id     AS organizer_id,
                 u.name   AS organizer_name,
-                u.avatar AS organizer_avatar,
                 c.name   AS category_name,
                 c.icon   AS category_icon
             FROM events e
@@ -555,9 +554,14 @@ class EventController
 
   public function showOwn(array $params): void
   {
-    $eventId = (int) $params['id'];
-    $userId  = $this->request->user['id'];
-    $role    = $this->request->user['role'];
+    $identifier = $params['id'];
+    $userId     = $this->request->user['id'];
+    $role       = $this->request->user['role'];
+
+    // Accept either a numeric event id or a slug on the same route.
+    // Ownership check still runs on organizer_id, so this stays safe.
+    $isNumeric = ctype_digit((string) $identifier);
+    $column    = $isNumeric ? 'e.id' : 'e.slug';
 
     $stmt = $this->db->prepare("
         SELECT e.*, 
@@ -566,14 +570,18 @@ class EventController
         FROM events e
         JOIN users u ON u.id = e.organizer_id
         LEFT JOIN categories c ON c.id = e.category_id
-        WHERE e.id = ?
+        WHERE {$column} = ?
           AND e.deleted_at IS NULL
           AND (e.organizer_id = ? OR ? = 'dev')
     ");
-    $stmt->execute([$eventId, $userId, $role]);
+    $stmt->execute([$identifier, $userId, $role]);
     $event = $stmt->fetch();
 
     if (!$event) Response::notFound('Event not found.');
+
+    // Always resolve to the real numeric id for anything downstream —
+    // never trust $identifier past this point, it may be a slug.
+    $eventId = (int) $event['id'];
 
     $stmt = $this->db->prepare("
         SELECT id, name, description, price, quantity, quantity_sold, sales_end_at
