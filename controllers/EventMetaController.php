@@ -4,17 +4,19 @@ class EventMetaController
 {
   public static function show(array $params): void
   {
-    $eventId = (int) $params['id'];
+    $identifier = $params['slug'];
+    $isNumeric = ctype_digit((string) $identifier);
+    $column    = $isNumeric ? 'id' : 'slug';
 
     $db = Database::connect();
 
     $stmt = $db->prepare("
       SELECT id, title, description, banner_image, slug
       FROM events
-      WHERE id = ? AND deleted_at IS NULL
+      WHERE {$column} = ? AND deleted_at IS NULL
       LIMIT 1
     ");
-    $stmt->execute([$eventId]);
+    $stmt->execute([$identifier]);
     $event = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$event) {
