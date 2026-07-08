@@ -67,6 +67,7 @@ require_once __DIR__ . '/controllers/PDFController.php';
 require_once __DIR__ . '/controllers/CloudinaryController.php';
 require_once __DIR__ . '/controllers/GoogleAuthController.php';
 require_once __DIR__ . '/controllers/EventMetaController.php';
+require_once __DIR__ . '/controllers/SitemapController.php';
 
 // ============================================================
 // 3. BOOTSTRAP
@@ -92,6 +93,7 @@ if (str_ends_with($request->uri, '/api/health') && $request->method === 'GET') {
 // 5. REGISTER ROUTES
 // ============================================================
 require_once __DIR__ . '/routes/auth.php';
+require_once __DIR__ . '/routes/sitemap.php';
 require_once __DIR__ . '/routes/profile.php';
 require_once __DIR__ . '/routes/events.php';
 require_once __DIR__ . '/routes/bookings.php';
