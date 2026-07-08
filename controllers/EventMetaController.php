@@ -25,11 +25,11 @@ class EventMetaController
       return;
     }
 
-    $frontendUrl = rtrim(Environment::get('APP_URL', 'https://ticketer-e.vercel.app'), '/');
+    $frontendUrl = rtrim(Environment::get('FRONTEND_URL', 'https://ticketer-e.vercel.app'), '/');
     $title = htmlspecialchars($event['title'], ENT_QUOTES);
     $description = htmlspecialchars(mb_substr($event['description'] ?? '', 0, 160), ENT_QUOTES);
     $image = htmlspecialchars($event['banner_image'] ?? '', ENT_QUOTES);
-    $eventUrl = htmlspecialchars("{$frontendUrl}/events/{$event['id']}", ENT_QUOTES);
+    $eventUrl = htmlspecialchars("{$frontendUrl}/events/{$event['slug']}", ENT_QUOTES);
 
     header('Content-Type: text/html; charset=utf-8');
     echo <<<HTML
