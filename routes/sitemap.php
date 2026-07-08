@@ -1,0 +1,1 @@
+$router->get('/api/sitemap.xml', [SitemapController::class, 'generate']);
