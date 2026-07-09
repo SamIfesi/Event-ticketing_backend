@@ -45,6 +45,7 @@ class NotificationService
     int    $userId,
     int    $bookingId,
     string $eventTitle,
+    int    $eventId,
     int    $quantity,
     float  $totalAmount
   ): void {
@@ -55,7 +56,7 @@ class NotificationService
       "Booking Confirmed — {$eventTitle}",
       "Your payment of {$formatted} was successful. {$quantity} ticket(s) issued for {$eventTitle}. Show your QR code at the gate.",
       "/bookings/{$bookingId}",
-      $bookingId,
+      $eventId,
       'booking'
     );
   }
