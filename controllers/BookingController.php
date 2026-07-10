@@ -281,10 +281,12 @@ class BookingController
     try {
       $paystack    = new PaystackService();
       $userEmail   = $this->request->user['email'];
+      $newReference = TokenHelper::generatePaystackReference();
+
       $transaction = $paystack->initializeTransaction(
         $userEmail,
         (float) $existing['total_amount'],
-        $existing['paystack_reference'],
+        $newReference,
         [
           'booking_id'  => $existing['id'],
           'event_title' => $existing['event_title'],
@@ -292,15 +294,19 @@ class BookingController
         ]
       );
 
+      // Update the booking with the new reference
+      $this->db->prepare(
+        "UPDATE bookings SET paystack_reference = ? WHERE id = ?"
+      )->execute([$newReference, $existing['id']]);
+
       Response::success([
         'has_pending'   => true,
         'booking_id'    => (int) $existing['id'],
-        'reference'     => $existing['paystack_reference'],
+        'reference'     => $newReference,
         'amount'        => (float) $existing['total_amount'],
         'access_code'   => $transaction['access_code'],
       ]);
     } catch (Exception $e) {
-      // Reference might be too old for Paystack — return no pending
       Response::success(['has_pending' => false]);
     }
   }
