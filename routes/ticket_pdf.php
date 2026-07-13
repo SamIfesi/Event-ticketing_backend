@@ -33,6 +33,20 @@ $router->get(
   [AuthMiddleware::class]
 );
 
+// NEW END POINT
+$router->get(
+  '/api/tickets/:id/download/png',
+  [TicketPDFController::class, 'downloadSinglePng'],
+  [AuthMiddleware::class]
+);
+
+// Download ticket as PDF (generates on first request, cached after)
+$router->get(
+  '/api/tickets/:id/download',
+  [TicketPDFController::class, 'downloadSingle'],
+  [AuthMiddleware::class]
+);
+
 // ── Admin / Dev ───────────────────────────────────────────────
 
 // Force regenerate both PDF and PNG cached files
