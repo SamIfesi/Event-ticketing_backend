@@ -98,6 +98,93 @@ class TicketPDFController
   }
 
   // ============================================================
+  // POST /api/tickets/:id/download
+  // ============================================================
+
+  public function downloadSingle(array $params): void
+  {
+    $ticketId = (int) $params['id'];
+    $ticket = $this->fetchTicketOwnership($ticketId);
+    if (!$ticket) Response::notFound('Ticket not found.');
+    $this->assertAccess($ticket);
+
+    if (!file_exists(PDFService::getTicket($ticketId))) {
+      PDFService::generateTickets((int) $ticket['booking_id']);
+    }
+
+    $path = PDFService::getTicket($ticketId);
+    if (!file_exists($path)) {
+      Response::error('Ticket file not found.', 404);
+      return;
+    }
+
+    $filename = "Ticketer_Ticket_#" . str_pad((string)$ticketId, 6, '0', STR_PAD_LEFT) . ".pdf";
+    if (ob_get_level()) ob_end_clean();
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Length: ' . filesize($path));
+    readfile($path);
+    exit;
+  }
+
+  // ============================================================
+  // POST /api/tickets/:id/download/png
+  // ============================================================
+  public function downloadSinglePng(array $params): void
+  {
+    $ticketId = (int) $params['id'];
+    $ticket = $this->fetchTicketOwnership($ticketId);
+    if (!$ticket) Response::notFound('Ticket not found.');
+    $this->assertAccess($ticket);
+
+    $pngPath = str_replace('.pdf', '.png', PDFService::getTicket($ticketId));
+    if (!file_exists($pngPath)) {
+      PDFService::generateTickets((int) $ticket['booking_id']);
+    }
+    if (!file_exists($pngPath)) {
+      Response::error('Ticket image not found.', 404);
+      return;
+    }
+
+    $filename = "Ticketer_Ticket_#" . str_pad((string)$ticketId, 6, '0', STR_PAD_LEFT) . ".png";
+    if (ob_get_level()) ob_end_clean();
+    header('Content-Type: image/png');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Length: ' . filesize($pngPath));
+    readfile($pngPath);
+    exit;
+  }
+
+  private function fetchTicketOwnership(int $ticketId): array|false
+  {
+    $stmt = $this->db->prepare("
+        SELECT t.id, t.booking_id, t.user_id, b.payment_status, e.organizer_id
+        FROM tickets t
+        JOIN bookings b ON b.id = t.booking_id
+        JOIN events e ON e.id = t.event_id
+        WHERE t.id = ? AND t.deleted_at IS NULL
+    ");
+    $stmt->execute([$ticketId]);
+    return $stmt->fetch();
+  }
+
+  private function assertAccess(array $ticket): void
+  {
+    $userId = $this->request->user['id'];
+    $role   = $this->request->user['role'];
+    $isOwner     = (int) $ticket['user_id']      === $userId;
+    $isOrganizer = (int) $ticket['organizer_id'] === $userId;
+    $isAdmin     = in_array($role, [Constants::ROLE_ADMIN, Constants::ROLE_DEV], true);
+
+    if (!$isOwner && !$isOrganizer && !$isAdmin) {
+      Response::forbidden('You do not have access to this ticket.');
+    }
+    if ($ticket['payment_status'] !== Constants::PAYMENT_PAID) {
+      Response::error('A ticket is only available for confirmed paid bookings.', 400);
+    }
+  }
+
+  // ============================================================
   // POST /api/bookings/:id/ticket/regenerate
   //
   // Force-regenerates both PDF and PNG (clears cached files).
