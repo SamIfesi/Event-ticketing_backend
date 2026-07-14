@@ -5,7 +5,7 @@
  *
  * Flow:
  *   1. React uses @react-oauth/google (implicit flow) → gets access_token
- *   2. React sends POST /api/auth/google { access_token }
+ *   2. React sends POST /api/auth/callback/google { access_token }
  *   3. PHP calls Google's userinfo endpoint to verify + fetch profile
  *   4. PHP finds-or-creates the user, issues JWT
  *   5. Returns same shape as /api/auth/login
@@ -16,7 +16,7 @@
  *   directly from Google — no extra JWT parsing needed.
  *
  * Route:
- *   POST /api/auth/google   (public — no AuthMiddleware)
+ *   POST /api/auth/callback/google   (public — no AuthMiddleware)
  */
 class GoogleAuthController
 {
@@ -29,7 +29,7 @@ class GoogleAuthController
     $this->db      = Database::connect();
   }
 
-  // POST /api/auth/google
+  // POST /api/auth/callback/google
   //
   // Body: { access_token: string }
   //
