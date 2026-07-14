@@ -39,7 +39,7 @@ class MailService
     $this->fromEmail = Environment::get('MAIL_FROM_ADDRESS', 'noreply@mail.ticketer.website');
     $this->fromName  = Environment::get('MAIL_FROM_NAME',    'Ticketer');
     $this->appName   = Environment::get('APP_NAME',          'Ticketer');
-    $this->appUrl    = Environment::get('APP_URL',           'https://ticketer.website');
+    $this->appUrl    = Environment::get('FRONTEND_URL',           'https://ticketer.website');
     $this->logoUrl   = Environment::get('MAIL_LOGO_URL',     '');
   }
 
