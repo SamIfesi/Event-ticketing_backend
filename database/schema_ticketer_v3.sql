@@ -95,6 +95,8 @@ CREATE TABLE IF NOT EXISTS `events` (
   `location`          varchar(255) DEFAULT NULL,
   `banner_image`      varchar(255) DEFAULT NULL,
   `banner_public_id`  varchar(255) DEFAULT NULL,
+  `contact_email`     varchar(255) DEFAULT NULL,
+  `contact_phone`     varchar(50)  DEFAULT NULL,
   `start_date`        datetime     NOT NULL,
   `end_date`          datetime     NOT NULL,
   `total_tickets`     int(10) UNSIGNED NOT NULL,

@@ -138,7 +138,12 @@ class PDFService
           ->setNodeBinary($nodePath)
           ->setNpmBinary($npmPath)
           ->noSandbox()
-          ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage'])
+          ->addChromiumArguments([
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+            '--no-sandbox',
+            '--disable-setuid-sandbox'
+          ])
           ->paperSize(360, 600, 'px')
           ->deviceScaleFactor(3)
           ->showBackground()
@@ -155,7 +160,12 @@ class PDFService
           ->setNodeBinary($nodePath)
           ->setNpmBinary($npmPath)
           ->noSandbox()
-          ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage'])
+          ->addChromiumArguments([
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+            '--no-sandbox',
+            '--disable-setuid-sandbox'
+          ])
           ->windowSize(360, 600)
           ->deviceScaleFactor(3)
           ->showBackground()

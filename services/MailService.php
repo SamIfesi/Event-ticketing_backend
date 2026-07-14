@@ -10,11 +10,11 @@
  * ENV variables needed:
  *   SENDBYTE_API_KEY     — from your SendByte dashboard (sk_test_... in dev, sk_live_... in prod)
  *   MAIL_API_URL         — SendByte endpoint, defaults to https://api.sendbyte.africa/v1/emails
- *   MAIL_FROM_ADDRESS    — verified sender e.g. no-reply@ticketer.ng
+ *   MAIL_FROM_ADDRESS    — verified sender e.g. noreply@mail.ticketer.website
  *   MAIL_FROM_NAME       — display name e.g. Ticketer
  *   MAIL_LOGO_URL        — full Cloudinary URL to your logo image
  *   APP_NAME             — Ticketer
- *   APP_URL              — https://yourapp.com
+ *   APP_URL              — https://ticketer.website
  *
  * To rotate keys or switch environments: only touch .env, never this file.
  */
@@ -36,10 +36,10 @@ class MailService
   {
     $this->apiKey    = Environment::get('SENDBYTE_API_KEY');
     $this->apiUrl    = Environment::get('MAIL_API_URL',      'https://api.sendbyte.africa/v1/emails');
-    $this->fromEmail = Environment::get('MAIL_FROM_ADDRESS', 'no-reply@ticketer.ng');
+    $this->fromEmail = Environment::get('MAIL_FROM_ADDRESS', 'noreply@mail.ticketer.website');
     $this->fromName  = Environment::get('MAIL_FROM_NAME',    'Ticketer');
     $this->appName   = Environment::get('APP_NAME',          'Ticketer');
-    $this->appUrl    = Environment::get('APP_URL',           'https://ticketer.ng');
+    $this->appUrl    = Environment::get('APP_URL',           'https://ticketer.website');
     $this->logoUrl   = Environment::get('MAIL_LOGO_URL',     '');
   }
 
@@ -60,7 +60,7 @@ class MailService
       $this->spacer(20) .
       $this->button('Browse Events', $this->appUrl . '/events') .
       $this->spacer(16) .
-      $this->muted("If you didn't create this account, please contact us at support@ticketer.ng");
+      $this->muted("If you didn't create this account, please contact us at support@ticketer.website");
 
     return $this->send(
       $toEmail,
@@ -224,6 +224,7 @@ class MailService
     $body = [
       'from'    => "{$this->fromName} <{$this->fromEmail}>",
       'to'      => $toEmail,
+      'reply_to' => 'support@ticketer.website',
       'subject' => $subject,
       'html'    => $html,
       'text'    => $text ?: strip_tags($html),

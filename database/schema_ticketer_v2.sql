@@ -416,6 +416,9 @@ ALTER TABLE `users`
   ADD COLUMN `auth_provider`  ENUM('email', 'google') NOT NULL DEFAULT 'email' AFTER `google_id`,
   ADD UNIQUE KEY `google_id` (`google_id`);
 
+ALTER TABLE `events`
+     ADD COLUMN `contact_email` VARCHAR(255) DEFAULT NULL AFTER `banner_public_id`,
+     ADD COLUMN `contact_phone` VARCHAR(50)  DEFAULT NULL AFTER `contact_email`;
 
 
 -- ============================================================
