@@ -314,9 +314,40 @@ class NotificationService
     );
   }
 
+  public static function newOrganizerApplication(
+    int    $adminId,
+    string $applicantName,
+    string $orgName
+  ): void {
+    self::push(
+      $adminId,
+      'new_organizer_application',
+      "New Organizer Application — {$orgName}",
+      "{$applicantName} applied to become an organizer for \"{$orgName}\". Review in Organizer Applications.",
+      "/admin/organizers/{$applicantName}",
+      null,
+      'application'
+    );
+  }
+  
   // ============================================================
   // ORGANIZER APPLICATION NOTIFICATIONS
   // ============================================================
+  
+  public static function organizerApplicationSubmitted(
+    int    $userId,
+    string $orgName
+  ): void {
+    self::push(
+      $userId,
+      'organizer_application_submitted',
+      "Organizer Application Submitted",
+      "Your application to become an organizer for \"{$orgName}\" has been submitted. You will be notified once it is reviewed.",
+      "/become-organizer",
+      null,
+      'application'
+    );
+  }
 
   public static function organizerApproved(int $userId, string $orgName): void
   {
@@ -338,7 +369,7 @@ class NotificationService
       'organizer_rejected',
       "Application Not Approved",
       "Your organizer application for \"{$orgName}\" was not approved at this time. You may apply again with updated information.",
-      "/profile",
+      "/become-organizer",
       null,
       'application'
     );

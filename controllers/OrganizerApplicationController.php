@@ -61,6 +61,17 @@ class OrganizerApplicationController
       VALUES (?, ?, ?, ?, ?)
     ")->execute([$userId, $orgName, $eventType, $phone, $reason ?: null]);
 
+    $applicantName = $this->request->user['name'] ?? 'An attendee';
+    $userId = $this->request->user['id'];
+    $adminStmt = $this->db->prepare("SELECT id FROM users WHERE role IN (?, ?) AND is_active = 1");
+    $adminStmt->execute([Constants::ROLE_ADMIN, Constants::ROLE_DEV]);
+    $admins = $adminStmt->fetchAll(PDO::FETCH_COLUMN);
+
+    foreach ($admins as $adminId) {
+      NotificationService::newOrganizerApplication((int)$adminId, $applicantName, $orgName);
+      }
+      NotificationService::organizerApplicationSubmitted((int)$userId, $orgName);
+
     Response::success(null, 'Application submitted successfully. We will review it shortly.', 201);
   }
 
