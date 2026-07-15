@@ -292,7 +292,7 @@ class EventController
 
     // Organizers can only edit their own events
     // Dev can edit any event
-    if ($role === Constants::ROLE_ORGANIZER && (int) $event['organizer_id'] !== $userId) {
+    if ($role === Constants::ROLE_ORGANIZER || $role === Constants::ROLE_ADMIN && (int) $event['organizer_id'] !== $userId) {
       Response::forbidden('You can only edit your own events.');
     }
 
@@ -449,7 +449,7 @@ class EventController
     }
 
     // Organizers can only delete their own events
-    if ($role === Constants::ROLE_ORGANIZER && (int) $event['organizer_id'] !== $userId) {
+    if ($role === Constants::ROLE_ORGANIZER || $role === Constants::ROLE_ADMIN && (int) $event['organizer_id'] !== $userId) {
       Response::forbidden('You can only cancel your own events.');
     }
 
@@ -596,9 +596,9 @@ class EventController
         LEFT JOIN categories c ON c.id = e.category_id
         WHERE {$column} = ?
           AND e.deleted_at IS NULL
-          AND (e.organizer_id = ? OR ? = 'dev')
+          AND (e.organizer_id = ? OR ? = 'dev' OR ? = 'admin')
     ");
-    $stmt->execute([$identifier, $userId, $role]);
+    $stmt->execute([$identifier, $userId, $role, $role]);
     $event = $stmt->fetch();
 
     if (!$event) Response::notFound('Event not found.');
