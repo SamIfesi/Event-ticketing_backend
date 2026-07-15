@@ -232,6 +232,7 @@ class AdminController
                 e.id,
                 e.title,
                 e.banner_image,
+                e.slug,
                 e.status,
                 e.start_date,
                 e.total_tickets,
