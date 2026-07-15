@@ -120,6 +120,8 @@ class EventController
                 e.description,
                 e.location,
                 e.banner_image,
+                e.contact_email,
+                e.contact_phone,
                 e.start_date,
                 e.end_date,
                 e.total_tickets,
@@ -193,6 +195,12 @@ class EventController
     if (!isset($input['total_tickets']) || (int) $input['total_tickets'] < 1) {
       $errors['total_tickets'] = 'Total tickets must be at least 1.';
     }
+    if (!empty($input['contact_email']) && !filter_var($input['contact_email'], FILTER_VALIDATE_EMAIL)) {
+      $errors['contact_email'] = 'Enter a valid enquiry email address.';
+    }
+    if (!empty($input['contact_phone']) && !preg_match('/^\+?[1-9]\d{1,14}$/', $input['contact_phone'])) {
+      $errors['contact_phone'] = 'Enter a valid enquiry phone number.';
+    }
 
     if (!empty($errors)) {
       Response::validationError($errors);
@@ -229,9 +237,9 @@ class EventController
 
     $stmt = $this->db->prepare("
             INSERT INTO events
-                (organizer_id, category_id, title, slug, description, location, banner_image, start_date, end_date, total_tickets, status)
+                (organizer_id, category_id, title, slug, description, location, banner_image, contact_email, contact_phone, start_date, end_date, total_tickets, status)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
     $stmt->execute([
@@ -242,6 +250,8 @@ class EventController
       $input['description']  ?? null,
       $input['location']     ?? null,
       $input['banner_image'] ?? null,
+      trim($input['contact_email'] ?? '') ?: null,
+      trim($input['contact_phone'] ?? '') ?: null,
       $input['start_date'],
       $input['end_date'],
       (int) $input['total_tickets'],
@@ -293,6 +303,12 @@ class EventController
       if (strtotime($input['end_date']) <= strtotime($input['start_date'])) {
         Response::validationError(['end_date' => 'End date must be after start date.']);
       }
+    }
+    if (!empty($input['contact_email']) && !filter_var($input['contact_email'], FILTER_VALIDATE_EMAIL)) {
+      $errors['contact_email'] = 'Enter a valid enquiry email address.';
+    }
+    if (!empty($input['contact_phone']) && !preg_match('/^\+?[1-9]\d{1,14}$/', $input['contact_phone'])) {
+      $errors['contact_phone'] = 'Enter a valid enquiry phone number.';
     }
 
     // ── NEW: block publishing without bank details ──
@@ -354,8 +370,10 @@ class EventController
         }
       }
     }
-
     // Update event fields
+    $contactEmailProvided = array_key_exists('contact_email', $input);
+    $contactPhoneProvided = array_key_exists('contact_phone', $input);
+
     $stmt = $this->db->prepare("
       UPDATE events SET
         category_id   = COALESCE(?, category_id),
@@ -363,6 +381,8 @@ class EventController
         description   = COALESCE(?, description),
         location      = COALESCE(?, location),
         banner_image  = COALESCE(?, banner_image),
+        contact_email = CASE WHEN ? THEN ? ELSE contact_email END,
+        contact_phone = CASE WHEN ? THEN ? ELSE contact_phone END,
         start_date    = COALESCE(?, start_date),
         end_date      = COALESCE(?, end_date),
         total_tickets = COALESCE(?, total_tickets),
@@ -376,6 +396,10 @@ class EventController
       $input['description']   ?? null,
       $input['location']      ?? null,
       $input['banner_image']  ?? null,
+      $contactEmailProvided,
+      $contactEmailProvided ? (trim($input['contact_email']) ?: null) : null,
+      $contactPhoneProvided,
+      $contactPhoneProvided ? (trim($input['contact_phone']) ?: null) : null,
       $input['start_date']    ?? null,
       $input['end_date']      ?? null,
       $input['total_tickets'] ?? null,
