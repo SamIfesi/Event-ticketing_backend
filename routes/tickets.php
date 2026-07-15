@@ -5,7 +5,7 @@ $router->get('/api/tickets/:id',                   [TicketController::class, 'sh
 $router->get('/api/tickets/booking/:bookingId',    [TicketController::class, 'byBooking'],  [AuthMiddleware::class]);
 
 // Organizer — check in attendees at the gate
-$router->post('/api/tickets/checkin',              [TicketController::class, 'checkin'],    [AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'dev']]);
+$router->post('/api/tickets/checkin',              [TicketController::class, 'checkin'],    [AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'admin', 'dev']]);
 
 // Organizer — view full check-in list for an event
-$router->get('/api/organizer/events/:id/checkins', [TicketController::class, 'checkinList'],[AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'dev']]);
+$router->get('/api/organizer/events/:id/checkins', [TicketController::class, 'checkinList'],[AuthMiddleware::class, RoleMiddleware::class => ['organizer', 'admin', 'dev']]);
