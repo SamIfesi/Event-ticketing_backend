@@ -3,44 +3,34 @@
 // ============================================================
 // TICKET PDF + PNG ROUTES
 //
-// NOTE: Specific sub-paths (/status, /regenerate, /png) MUST be
-// registered BEFORE the generic /:id/ticket route to prevent
-// the router matching them as booking IDs.
+// Downloads are always single-ticket. There is no booking-level
+// bulk/ZIP download route — the frontend downloads each ticket
+// under a booking one at a time via TicketsService.downloadAllTickets().
 //
-// Ordering matters — do not rearrange.
+// NOTE: /status and /regenerate operate on a whole booking (they
+// check/rebuild every ticket under it), but the actual download
+// routes are keyed by ticket id, not booking id.
 // ============================================================
 
-// ── Attendee / Organizer ──────────────────────────────────────
+// ── Attendee / Organizer — booking-level status + regenerate ──
 
-// Check if a ticket has been generated (PDF + PNG status)
+// Check if every ticket under a booking has been generated (PDF + PNG status)
 $router->get(
   '/api/bookings/:id/ticket/status',
   [TicketPDFController::class, 'status'],
   [AuthMiddleware::class]
 );
 
-// Download ticket as PNG image
-$router->get(
-  '/api/bookings/:id/ticket/png',
-  [TicketPDFController::class, 'downloadPng'],
-  [AuthMiddleware::class]
-);
+// ── Attendee / Organizer — per-ticket downloads ────────────────
 
-// Download ticket as PDF (generates on first request, cached after)
-$router->get(
-  '/api/bookings/:id/ticket',
-  [TicketPDFController::class, 'download'],
-  [AuthMiddleware::class]
-);
-
-// NEW END POINT
+// Download ONE ticket as PNG image
 $router->get(
   '/api/tickets/:id/download/png',
   [TicketPDFController::class, 'downloadSinglePng'],
   [AuthMiddleware::class]
 );
 
-// Download ticket as PDF (generates on first request, cached after)
+// Download ONE ticket as PDF (generates on first request, cached after)
 $router->get(
   '/api/tickets/:id/download',
   [TicketPDFController::class, 'downloadSingle'],
@@ -49,23 +39,24 @@ $router->get(
 
 // ── Admin / Dev ───────────────────────────────────────────────
 
-// Force regenerate both PDF and PNG cached files
+// Force regenerate every ticket (PDF + PNG) under a booking
 $router->post(
   '/api/bookings/:id/ticket/regenerate',
   [TicketPDFController::class, 'regenerate'],
   [AuthMiddleware::class, RoleMiddleware::class => ['admin', 'dev']]
 );
 
-// Admin download any ticket as PDF
+// Admin download any ticket's PNG (register before the PDF route —
+// same 5-segment shape, so /png must be matched first)
 $router->get(
-  '/api/admin/tickets/:id/download',
-  [TicketPDFController::class, 'adminDownload'],
+  '/api/admin/tickets/:id/download/png',
+  [TicketPDFController::class, 'adminDownloadSinglePng'],
   [AuthMiddleware::class, RoleMiddleware::class => ['admin', 'dev']]
 );
 
-// Admin download any ticket as PNG
+// Admin download any ticket's PDF
 $router->get(
-  '/api/admin/tickets/:id/download/png',
-  [TicketPDFController::class, 'adminDownloadPng'],
+  '/api/admin/tickets/:id/download',
+  [TicketPDFController::class, 'adminDownloadSingle'],
   [AuthMiddleware::class, RoleMiddleware::class => ['admin', 'dev']]
 );
