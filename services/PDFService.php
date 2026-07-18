@@ -6,6 +6,7 @@
  *
  * One PDF and one PNG is generated per ticket (not per booking).
  * So if a user bought 3 tickets, 3 PDFs and 3 PNGs are generated.
+ * Downloads are always single-file — there is no ZIP path.
  *
  * Flow:
  *   1. Fetch booking + event + ticket data from DB
@@ -118,6 +119,10 @@ class PDFService
     $filePaths = [];
 
     // ── Generate one PDF + one PNG per ticket ─────────────
+    // This loop is what makes downloads "single-single" — each
+    // ticket gets its own independent Browsershot render and its
+    // own file on disk. Nothing here ever bundles multiple
+    // tickets into one artifact.
     foreach ($tickets as $ticket) {
       $ticketId = (int) $ticket['id'];
       $pdfPath  = self::$storageDir . "ticket_{$ticketId}.pdf";
@@ -137,17 +142,12 @@ class PDFService
           ->setChromePath($chromiumPath)
           ->setNodeBinary($nodePath)
           ->setNpmBinary($npmPath)
+          ->timeout(180)
           ->noSandbox()
-          ->addChromiumArguments([
-            '--disable-gpu',
-            '--disable-dev-shm-usage',
-            '--no-sandbox',
-            '--disable-setuid-sandbox'
-          ])
+          ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage'])
           ->paperSize(360, 600, 'px')
           ->deviceScaleFactor(3)
           ->showBackground()
-          ->waitUntilNetworkIdle()
           ->save($pdfPath);
       }
 
@@ -160,16 +160,10 @@ class PDFService
           ->setNodeBinary($nodePath)
           ->setNpmBinary($npmPath)
           ->noSandbox()
-          ->addChromiumArguments([
-            '--disable-gpu',
-            '--disable-dev-shm-usage',
-            '--no-sandbox',
-            '--disable-setuid-sandbox'
-          ])
+          ->addChromiumArguments(['--disable-gpu', '--disable-dev-shm-usage'])
           ->windowSize(360, 600)
           ->deviceScaleFactor(3)
           ->showBackground()
-          ->waitUntilNetworkIdle()
           ->save($pngPath);
       }
 
@@ -178,6 +172,53 @@ class PDFService
 
     return $filePaths;
   }
+
+  // ============================================================
+  // SINGLE-TICKET LOOKUPS
+  // These are what the controller uses for per-ticket downloads.
+  // No booking-level bundling anywhere below this line.
+  // ============================================================
+
+  public static function singleTicketExists(int $ticketId): bool
+  {
+    return file_exists(self::$storageDir . "ticket_{$ticketId}.pdf");
+  }
+
+  public static function singleTicketPngExists(int $ticketId): bool
+  {
+    return file_exists(self::$storageDir . "ticket_{$ticketId}.png");
+  }
+
+  public static function getSingleTicketPath(int $ticketId): string
+  {
+    return self::$storageDir . "ticket_{$ticketId}.pdf";
+  }
+
+  public static function getSingleTicketPngPath(int $ticketId): string
+  {
+    return self::$storageDir . "ticket_{$ticketId}.png";
+  }
+
+  // Public URL for a single ticket PDF, keyed by ticket id.
+  public static function getSingleTicketUrl(int $ticketId): string
+  {
+    $appUrl = Environment::get('APP_URL', 'http://localhost');
+    return "{$appUrl}/storage/tickets/ticket_{$ticketId}.pdf";
+  }
+
+  // Public URL for a single ticket PNG, keyed by ticket id.
+  public static function getSingleTicketPngUrl(int $ticketId): string
+  {
+    $appUrl = Environment::get('APP_URL', 'http://localhost');
+    return "{$appUrl}/storage/tickets/ticket_{$ticketId}.png";
+  }
+
+  // ============================================================
+  // BOOKING-LEVEL HELPERS
+  // Used by status()/regenerate() which still operate across a
+  // whole booking's set of tickets, even though downloads
+  // themselves are always single-file.
+  // ============================================================
 
   // Check if ALL ticket PDFs under a booking have been generated.
   public static function ticketExists(int $bookingId): bool
@@ -193,8 +234,7 @@ class PDFService
     if (empty($tickets)) return false;
 
     foreach ($tickets as $ticket) {
-      $path = self::$storageDir . "ticket_{$ticket['id']}.pdf";
-      if (!file_exists($path)) return false;
+      if (!self::singleTicketExists((int) $ticket['id'])) return false;
     }
 
     return true;
@@ -214,93 +254,10 @@ class PDFService
     if (empty($tickets)) return false;
 
     foreach ($tickets as $ticket) {
-      $path = self::$storageDir . "ticket_{$ticket['id']}.png";
-      if (!file_exists($path)) return false;
+      if (!self::singleTicketPngExists((int) $ticket['id'])) return false;
     }
 
     return true;
-  }
-
-  // Get path for a single ticket PDF.
-  public static function getTicket(int $ticketId): string
-  {
-    return self::$storageDir . "ticket_{$ticketId}.pdf";
-  }
-
-  // Get the first PDF path for a booking (single-ticket shortcut).
-  public static function getTicketPath(int $bookingId): string
-  {
-    // For single-ticket bookings — returns the first ticket path.
-    // For multi-ticket, use getTicketPaths().
-    $db   = Database::connect();
-    $stmt = $db->prepare("
-            SELECT id FROM tickets
-            WHERE booking_id = ? AND deleted_at IS NULL
-            ORDER BY id ASC LIMIT 1
-        ");
-    $stmt->execute([$bookingId]);
-    $ticket = $stmt->fetch();
-
-    if (!$ticket) {
-      throw new Exception("No tickets found for booking #{$bookingId}.");
-    }
-
-    return self::$storageDir . "ticket_{$ticket['id']}.pdf";
-  }
-
-  // Get all PDF paths for a booking (multi-ticket).
-  public static function getTicketPaths(int $bookingId): array
-  {
-    $db   = Database::connect();
-    $stmt = $db->prepare("
-            SELECT id FROM tickets
-            WHERE booking_id = ? AND deleted_at IS NULL
-            ORDER BY id ASC
-        ");
-    $stmt->execute([$bookingId]);
-    $tickets = $stmt->fetchAll();
-
-    return array_map(
-      fn($t) => self::$storageDir . "ticket_{$t['id']}.pdf",
-      $tickets
-    );
-  }
-
-  // Get the first PNG path for a booking (single-ticket shortcut).
-  public static function getTicketPngPath(int $bookingId): string
-  {
-    $db   = Database::connect();
-    $stmt = $db->prepare("
-            SELECT id FROM tickets
-            WHERE booking_id = ? AND deleted_at IS NULL
-            ORDER BY id ASC LIMIT 1
-        ");
-    $stmt->execute([$bookingId]);
-    $ticket = $stmt->fetch();
-
-    if (!$ticket) {
-      throw new Exception("No tickets found for booking #{$bookingId}.");
-    }
-
-    return self::$storageDir . "ticket_{$ticket['id']}.png";
-  }
-
-  // Get all PNG paths for a booking (multi-ticket).
-  public static function getTicketPngPaths(int $bookingId): array
-  {
-    $db   = Database::connect();
-    $stmt = $db->prepare("
-            SELECT id FROM tickets
-            WHERE booking_id = ? AND deleted_at IS NULL
-            ORDER BY id ASC
-        ");
-    $stmt->execute([$bookingId]);
-    $tickets = $stmt->fetchAll();
-
-    return array_map(
-      fn($t) => self::$storageDir . "ticket_{$t['id']}.png",
-      $tickets
-    );
   }
 
   // Delete all cached ticket PDFs and PNGs for a booking.
@@ -321,42 +278,6 @@ class PDFService
         }
       }
     }
-  }
-
-  // Public URL for a single ticket PDF.
-  public static function getTicketUrl(int $bookingId): string
-  {
-    $db   = Database::connect();
-    $stmt = $db->prepare("
-            SELECT id FROM tickets
-            WHERE booking_id = ? AND deleted_at IS NULL
-            ORDER BY id ASC LIMIT 1
-        ");
-    $stmt->execute([$bookingId]);
-    $ticket = $stmt->fetch();
-
-    if (!$ticket) return '';
-
-    $appUrl = Environment::get('APP_URL', 'http://localhost');
-    return "{$appUrl}/storage/tickets/ticket_{$ticket['id']}.pdf";
-  }
-
-  // Public URL for a single ticket PNG.
-  public static function getTicketPngUrl(int $bookingId): string
-  {
-    $db   = Database::connect();
-    $stmt = $db->prepare("
-            SELECT id FROM tickets
-            WHERE booking_id = ? AND deleted_at IS NULL
-            ORDER BY id ASC LIMIT 1
-        ");
-    $stmt->execute([$bookingId]);
-    $ticket = $stmt->fetch();
-
-    if (!$ticket) return '';
-
-    $appUrl = Environment::get('APP_URL', 'http://localhost');
-    return "{$appUrl}/storage/tickets/ticket_{$ticket['id']}.png";
   }
 
   // Render the ticket HTML — matches the signature design exactly.
