@@ -267,7 +267,7 @@ class MailService
   }
 
   // ============================================================
-  // PRIVATE — Master HTML template
+  // PRIVATE — Master HTML template (redesigned, Instagram-style)
   // ============================================================
   private function template(
     string $headline,
@@ -279,15 +279,10 @@ class MailService
     $appName = $this->appName;
     $appUrl  = $this->appUrl;
 
-    // Logo: image if MAIL_LOGO_URL is set, else bold text fallback
     $logoHtml = !empty($this->logoUrl)
-      ? "<a href=\"{$appUrl}\" style=\"text-decoration:none;\">
-                 <img src=\"{$this->logoUrl}\" alt=\"{$appName}\" width=\"130\" height=\"auto\"
-                      style=\"display:block;border:0;outline:none;max-width:130px;height:auto;\" />
-               </a>"
-      : "<a href=\"{$appUrl}\" style=\"text-decoration:none;\">
-                 <span style=\"font-size:22px;font-weight:900;color:{$accent};letter-spacing:-0.03em;\">{$appName}</span>
-               </a>";
+      ? "<img src=\"{$this->logoUrl}\" alt=\"{$appName}\" width=\"120\" height=\"auto\"
+                 style=\"display:block;border:0;outline:none;max-width:120px;height:auto;\" />"
+      : "<span style=\"font-size:20px;font-weight:800;color:#18181b;letter-spacing:-0.02em;\">{$appName}</span>";
 
     return <<<HTML
 <!DOCTYPE html>
@@ -295,59 +290,54 @@ class MailService
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <title>{$appName}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+<body style="margin:0;padding:0;background-color:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
 
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;padding:40px 16px;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f2f5;padding:32px 16px;">
     <tr>
       <td align="center">
 
-        <!-- Card -->
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="max-width:520px;background-color:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08),0 4px 16px rgba(0,0,0,0.06);overflow:hidden;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;">
 
-          <!-- Top accent bar -->
+          <!-- Wordmark row — sits above the card, like Instagram -->
           <tr>
-            <td style="height:4px;background-color:{$accent};font-size:0;line-height:0;">&nbsp;</td>
-          </tr>
-
-          <!-- Logo -->
-          <tr>
-            <td align="center" style="padding:32px 40px 24px;">
+            <td style="padding:0 4px 20px;">
               {$logoHtml}
             </td>
           </tr>
 
-          <!-- Divider -->
+          <!-- Card -->
           <tr>
-            <td style="padding:0 40px;">
-              <div style="height:1px;background-color:#f1f1f1;"></div>
-            </td>
-          </tr>
-
-          <!-- Content -->
-          <tr>
-            <td style="padding:32px 40px 40px;">
-              <h1 style="margin:0 0 8px;font-size:22px;font-weight:800;color:#18181b;letter-spacing:-0.02em;line-height:1.3;">{$headline}</h1>
-              <p style="margin:0 0 24px;font-size:15px;color:#52525b;line-height:1.6;">{$intro}</p>
-              {$body}
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="padding:20px 40px 32px;border-top:1px solid #f1f1f1;">
-              <p style="margin:0;font-size:12px;color:#a1a1aa;text-align:center;line-height:1.6;">
-                &copy; {$year} {$appName}. All rights reserved.<br/>
-                <a href="{$appUrl}" style="color:#a1a1aa;text-decoration:underline;">{$appUrl}</a>
-              </p>
+            <td style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:36px 32px;">
+                    <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#18181b;line-height:1.35;">{$headline}</h1>
+                    <p style="margin:0 0 22px;font-size:15px;color:#3f3f46;line-height:1.6;">{$intro}</p>
+                    {$body}
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
         </table>
-        <!-- /Card -->
+
+        <!-- Footer — outside the card, plain text, like Instagram -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;">
+          <tr>
+            <td style="padding:20px 4px 0;">
+              <p style="margin:0;font-size:12px;color:#8e8e8e;line-height:1.7;">
+                from<br/>
+                <span style="font-size:13px;font-weight:600;color:#3f3f46;">{$appName}</span>
+              </p>
+              <p style="margin:14px 0 0;font-size:11px;color:#a1a1aa;line-height:1.6;">
+                &copy; {$year} {$appName} &middot; <a href="{$appUrl}" style="color:#a1a1aa;text-decoration:underline;">{$appUrl}</a>
+              </p>
+            </td>
+          </tr>
+        </table>
 
       </td>
     </tr>
@@ -358,26 +348,24 @@ class MailService
 HTML;
   }
 
-    // ============================================================
-    // PRIVATE — Reusable building blocks
-    // ============================================================
+// ============================================================
+// PRIVATE — Reusable building blocks (redesigned)
+// ============================================================
 
-  /** Large centred OTP code block */
+  /** Large centred OTP code block — plain, no dashed border/box tint */
   private function otpBlock(string $otp): string
   {
-    $accent = $this->colorAccent;
+    $spaced = implode(' ', str_split($otp));
     return <<<HTML
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-  <tr>
-    <td align="center" style="padding:8px 0 24px;">
-      <div style="display:inline-block;background-color:#eff6ff;border:1.5px dashed {$accent};border-radius:10px;padding:20px 48px;">
-        <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:{$accent};text-transform:uppercase;letter-spacing:0.12em;">Your verification code</p>
-        <p style="margin:0;font-size:38px;font-weight:900;color:{$accent};letter-spacing:0.3em;font-family:'Courier New',Courier,monospace;">{$otp}</p>
-      </div>
-    </td>
-  </tr>
-</table>
-HTML;
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="center" style="padding:8px 0 26px;">
+            <p style="margin:0 0 10px;font-size:11px;font-weight:600;color:#8e8e8e;text-transform:uppercase;letter-spacing:0.1em;">Confirmation code</p>
+            <p style="margin:0;font-size:34px;font-weight:700;color:#18181b;letter-spacing:0.15em;font-family:'Courier New',Courier,monospace;">{$spaced}</p>
+          </td>
+        </tr>
+      </table>
+    HTML;
   }
 
   /** Full-width CTA button */
@@ -385,88 +373,72 @@ HTML;
   {
     $accent = $this->colorAccent;
     return <<<HTML
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-  <tr>
-    <td align="center" style="padding:4px 0;">
-      <a href="{$url}"
-         style="display:inline-block;background-color:{$accent};color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 40px;border-radius:8px;letter-spacing:0.01em;">
-        {$label}
-      </a>
-    </td>
-  </tr>
-</table>
-HTML;
+      <table cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="border-radius:6px;background-color:{$accent};">
+            <a href="{$url}"
+               style="display:inline-block;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;">
+              {$label}
+            </a>
+          </td>
+        </tr>
+      </table>
+    HTML;
   }
 
-  /** Booking summary table */
+  /** Booking summary table — plain rows, no border box */
   private function summaryTable(array $rows): string
   {
-    $accent   = $this->colorAccent;
     $rowsHtml = '';
-
     foreach ($rows as [$label, $value, $highlight]) {
       $valueStyle = $highlight
-        ? "font-size:15px;font-weight:800;color:{$accent};"
-        : 'font-size:14px;font-weight:600;color:#18181b;';
+        ? 'font-size:14px;font-weight:700;color:#18181b;'
+        : 'font-size:14px;font-weight:500;color:#3f3f46;';
 
       $rowsHtml .= <<<HTML
-<tr>
-  <td style="padding:11px 0;border-bottom:1px solid #f4f4f5;font-size:13px;color:#71717a;font-weight:500;width:42%;">{$label}</td>
-  <td style="padding:11px 0;border-bottom:1px solid #f4f4f5;{$valueStyle}text-align:right;">{$value}</td>
-</tr>
-HTML;
+        <tr>
+          <td style="padding:10px 0;border-bottom:1px solid #f1f1f1;font-size:13px;color:#8e8e8e;width:42%;">{$label}</td>
+          <td style="padding:10px 0;border-bottom:1px solid #f1f1f1;{$valueStyle}text-align:right;">{$value}</td>
+        </tr>
+      HTML;
     }
 
     return <<<HTML
-<table width="100%" cellpadding="0" cellspacing="0" border="0"
-       style="border:1px solid #e4e4e7;border-radius:8px;overflow:hidden;margin-bottom:4px;">
-  <tr>
-    <td style="padding:0 16px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:6px;">
         {$rowsHtml}
       </table>
-    </td>
-  </tr>
-</table>
-HTML;
+    HTML;
   }
 
-  /** Bullet feature list for welcome email */
+  /** Bullet feature list — plain lines, no tinted background */
   private function featureList(array $items): string
   {
     $itemsHtml = '';
     foreach ($items as $item) {
       $itemsHtml .= <<<HTML
-<tr>
-  <td style="padding:6px 0;font-size:14px;color:#3f3f46;line-height:1.5;">{$item}</td>
-</tr>
-HTML;
-    }
+    <tr>
+      <td style="padding:5px 0;font-size:14px;color:#3f3f46;line-height:1.6;">{$item}</td>
+    </tr>
+    HTML;
+  }
 
     return <<<HTML
-<table width="100%" cellpadding="0" cellspacing="0" border="0"
-       style="background-color:#f8faff;border-radius:8px;padding:4px 0;margin-bottom:4px;">
-  <tr>
-    <td style="padding:12px 20px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:6px;">
         {$itemsHtml}
       </table>
-    </td>
-  </tr>
-</table>
-HTML;
+    HTML;
   }
 
   /** Standard paragraph */
   private function paragraph(string $text): string
   {
-    return "<p style=\"margin:0 0 12px;font-size:15px;color:#52525b;line-height:1.6;\">{$text}</p>";
+    return "<p style=\"margin:0 0 12px;font-size:14px;color:#3f3f46;line-height:1.6;\">{$text}</p>";
   }
 
   /** Small muted helper text */
   private function muted(string $text): string
   {
-    return "<p style=\"margin:0;font-size:13px;color:{$this->colorMuted};line-height:1.6;\">{$text}</p>";
+    return "<p style=\"margin:0;font-size:12px;color:#8e8e8e;line-height:1.6;\">{$text}</p>";
   }
 
   /** Vertical spacer */
