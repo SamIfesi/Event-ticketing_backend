@@ -178,6 +178,16 @@ class EventController
     $input  = $this->request->body;
     $errors = [];
 
+    $phone = preg_replace('/[\s-]+/', '', trim($input['contact_phone'] ?? ''));
+    $contactEmail = trim($input['contact_email'] ?? '');
+
+    if (!empty($contactEmail) && !filter_var($contactEmail, FILTER_VALIDATE_EMAIL)) {
+      $errors['contact_email'] = 'Enter a valid enquiry email address.';
+    }
+    if (!empty($phone) && !preg_match('/^(\+234|234|0)(7|8|9)[0-1]\d{8}$/', $phone)) {
+      $errors['contact_phone'] = 'Enter a valid enquiry phone number.';
+    }
+
     if (empty($input['title'])) {
       $errors['title'] = 'Event title is required.';
     }
@@ -194,12 +204,6 @@ class EventController
     }
     if (!isset($input['total_tickets']) || (int) $input['total_tickets'] < 1) {
       $errors['total_tickets'] = 'Total tickets must be at least 1.';
-    }
-    if (!empty($input['contact_email']) && !filter_var($input['contact_email'], FILTER_VALIDATE_EMAIL)) {
-      $errors['contact_email'] = 'Enter a valid enquiry email address.';
-    }
-    if (!empty($input['contact_phone']) && !preg_match('/^\+?[1-9]\d{1,14}$/', $input['contact_phone'])) {
-      $errors['contact_phone'] = 'Enter a valid enquiry phone number.';
     }
 
     if (!empty($errors)) {
@@ -250,8 +254,8 @@ class EventController
       $input['description']  ?? null,
       $input['location']     ?? null,
       $input['banner_image'] ?? null,
-      trim($input['contact_email'] ?? '') ?: null,
-      trim($input['contact_phone'] ?? '') ?: null,
+      $contactEmail ?: null,
+      $phone ?: null,
       $input['start_date'],
       $input['end_date'],
       (int) $input['total_tickets'],
@@ -292,23 +296,27 @@ class EventController
 
     // Organizers can only edit their own events
     // Dev can edit any event
-    if ($role === Constants::ROLE_ORGANIZER || $role === Constants::ROLE_ADMIN && (int) $event['organizer_id'] !== $userId) {
+    if ($role === Constants::ROLE_ORGANIZER && (int) $event['organizer_id'] !== $userId) {
       Response::forbidden('You can only edit your own events.');
     }
 
     $input = $this->request->body;
+    $errors = [];
+    $phone  = preg_replace('/[\s-]+/', '', trim($input['contact_phone'] ?? ''));
 
-    // Validate dates if both are provided
     if (!empty($input['start_date']) && !empty($input['end_date'])) {
       if (strtotime($input['end_date']) <= strtotime($input['start_date'])) {
-        Response::validationError(['end_date' => 'End date must be after start date.']);
+        $errors['end_date'] = 'End date must be after start date.';
       }
     }
     if (!empty($input['contact_email']) && !filter_var($input['contact_email'], FILTER_VALIDATE_EMAIL)) {
       $errors['contact_email'] = 'Enter a valid enquiry email address.';
     }
-    if (!empty($input['contact_phone']) && !preg_match('/^\+?[1-9]\d{1,14}$/', $input['contact_phone'])) {
+    if (!empty($phone) && !preg_match('/^(\+234|234|0)(7|8|9)[0-1]\d{8}$/', $phone)) {
       $errors['contact_phone'] = 'Enter a valid enquiry phone number.';
+    }
+    if (!empty($errors)) {
+      Response::validationError($errors);
     }
 
     // ── NEW: block publishing without bank details ──
@@ -449,7 +457,7 @@ class EventController
     }
 
     // Organizers can only delete their own events
-    if ($role === Constants::ROLE_ORGANIZER || $role === Constants::ROLE_ADMIN && (int) $event['organizer_id'] !== $userId) {
+    if ($role === Constants::ROLE_ORGANIZER && (int) $event['organizer_id'] !== $userId) {
       Response::forbidden('You can only cancel your own events.');
     }
 
