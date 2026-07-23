@@ -156,7 +156,7 @@ class BookingController
           $ticketType['name'],
           $quantity,
           0,
-          Environment::get('APP_URL') . '/dashboard',
+          Environment::get('FRONTEND_URL') . '/my-tickets',
           'free-' . $bookingId
         );
         QueueService::generateTicket($bookingId, 10); // Queue ticket PDF generation
@@ -542,7 +542,7 @@ class BookingController
         $booking['ticket_type_name'],
         (int) $booking['quantity'],
         (float) $booking['total_amount'],
-        Environment::get('APP_URL') . '/dashboard',
+        Environment::get('FRONTEND_URL') . '/my-bookings',
         $booking['paystack_reference']
       );
 
