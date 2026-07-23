@@ -147,7 +147,7 @@ class MailService
     string $ticketType,
     int    $quantity,
     float  $totalAmount,
-    string $dashboardUrl,
+    string $pageUrl,
     string $bookingReference = ''
   ): bool {
     $formattedAmount = '&#8358;' . number_format($totalAmount, 2);
@@ -163,7 +163,7 @@ class MailService
         ['Total paid',  $formattedAmount,                                      true],
       ]) .
       $this->spacer(24) .
-      $this->button('View My Tickets', $dashboardUrl) .
+      $this->button('View My Tickets', $pageUrl) .
       $this->spacer(16) .
       $this->muted('Show your QR code at the gate for check-in. Your tickets are in your dashboard.');
 
