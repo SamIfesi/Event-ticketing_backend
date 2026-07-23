@@ -292,13 +292,13 @@ class MailService
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{$appName}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
 
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f2f5;padding:32px 16px;">
     <tr>
       <td align="center">
 
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="min-width:480px;">
 
           <!-- Wordmark row — sits above the card, like Instagram -->
           <tr>
@@ -309,10 +309,10 @@ class MailService
 
           <!-- Card -->
           <tr>
-            <td style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
+            <td>
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td style="padding:36px 32px;">
+                  <td style="padding:32px;">
                     <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#18181b;line-height:1.35;">{$headline}</h1>
                     <p style="margin:0 0 22px;font-size:15px;color:#3f3f46;line-height:1.6;">{$intro}</p>
                     {$body}
@@ -325,12 +325,12 @@ class MailService
         </table>
 
         <!-- Footer — outside the card, plain text, like Instagram -->
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="min-width:480px;margin-left:8px">
           <tr>
             <td style="padding:20px 4px 0;">
               <p style="margin:0;font-size:12px;color:#8e8e8e;line-height:1.7;">
                 from<br/>
-                <span style="font-size:13px;font-weight:600;color:#3f3f46;">{$appName}</span>
+                <span style="font-size:13px;font-weight:600;color:#3f3f46;">{$appName} Team</span>
               </p>
               <p style="margin:14px 0 0;font-size:11px;color:#a1a1aa;line-height:1.6;">
                 &copy; {$year} {$appName} &middot; <a href="{$appUrl}" style="color:#a1a1aa;text-decoration:underline;">{$appUrl}</a>
